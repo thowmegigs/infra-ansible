@@ -1,0 +1,55 @@
+---
+# Clone/pull every repository and build it according to its type.
+- name: "PHASE :: DEPLOY — clone/pull repositories and build apps"
+  debug:
+    msg: "========== DEPLOY :: {{ projects | length }} production project(s), {{ experimental_projects | length }} experimental project(s) =========="
+
+- name: Ensure web root exists
+  file:
+    path: "{{ www_root }}"
+    state: directory
+    owner: "{{ web_owner }}"
+    group: "{{ web_group }}"
+    mode: "{{ web_dir_mode }}"
+
+- name: Ensure shared uploads directory exists
+  file:
+    path: "{{ shared_uploads_dir }}"
+    state: directory
+    owner: "{{ shared_uploads_owner }}"
+    group: "{{ shared_uploads_group }}"
+    mode: "{{ shared_uploads_mode }}"
+
+- name: Deploy production projects
+  include_tasks: project.yml
+  loop: "{{ projects | dict2items }}"
+  loop_control:
+    loop_var: project_item
+    label: "{{ project_item.key }}"
+
+- name: Deploy experimental monorepo projects
+  include_tasks: experimental.yml
+  loop: "{{ experimental_projects | dict2items }}"
+  loop_control:
+    loop_var: exp_item
+    label: "{{ exp_item.key }}"
+
+# ---------------------------------------------------------------------------
+# Link the shared uploads folder into each app (runs after repos are cloned,
+# so the parent directories exist). force replaces a stale file/symlink.
+# ---------------------------------------------------------------------------
+- name: Link shared uploads folder into apps
+  debug:
+    msg: "Linking {{ shared_uploads_dir }} -> {{ shared_uploads_links | join(', ') }}"
+  when: shared_uploads_links | default([]) | length > 0
+
+- name: Create shared uploads symlinks
+  file:
+    src: "{{ shared_uploads_dir }}"
+    dest: "{{ item }}"
+    state: link
+    force: yes
+    follow: no
+  loop: "{{ shared_uploads_links | default([]) }}"
+  loop_control:
+    label: "{{ item }}"

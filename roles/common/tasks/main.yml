@@ -1,0 +1,70 @@
+---
+# Base system provisioning: utilities, nginx, python, certbot, deploy user.
+- name: "PHASE :: COMMON — base packages, deploy user, nginx"
+  debug:
+    msg: "========== COMMON :: installing base packages + creating deploy user '{{ deploy_user }}' =========="
+
+- name: Update apt cache
+  apt:
+    update_cache: yes
+    cache_valid_time: 3600
+
+- name: Install base system packages
+  apt:
+    name:
+      - git
+      - curl
+      - unzip
+      - ca-certificates
+      - gnupg
+      - lsb-release
+      - acl
+      - software-properties-common
+      - nginx
+      - python3
+      - python3-pip
+      - python3-venv
+      - certbot
+      - python3-certbot-nginx
+    state: present
+
+- name: Ensure deploy group exists
+  group:
+    name: "{{ deploy_group }}"
+    state: present
+
+- name: Ensure deploy user exists
+  user:
+    name: "{{ deploy_user }}"
+    group: "{{ deploy_group }}"
+    shell: /bin/bash
+    create_home: yes
+    state: present
+
+- name: Add deploy user to the www-data group (shared write access)
+  user:
+    name: "{{ deploy_user }}"
+    groups: "{{ web_group }}"
+    append: yes
+
+- name: Ensure web root exists with correct ownership/permissions
+  file:
+    path: "{{ www_root }}"
+    state: directory
+    owner: "{{ web_owner }}"
+    group: "{{ web_group }}"
+    mode: "{{ web_dir_mode }}"
+
+- name: Ensure shared uploads directory exists
+  file:
+    path: "{{ shared_uploads_dir }}"
+    state: directory
+    owner: "{{ shared_uploads_owner }}"
+    group: "{{ shared_uploads_group }}"
+    mode: "{{ shared_uploads_mode }}"
+
+- name: Ensure nginx is enabled and started
+  service:
+    name: nginx
+    state: started
+    enabled: yes

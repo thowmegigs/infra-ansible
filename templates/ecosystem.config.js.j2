@@ -1,0 +1,28 @@
+// {{ ansible_managed }}
+// PM2 ecosystem — generated from group_vars (pm2_apps).
+//
+// NO SECRETS HERE. Each app is launched through a bash wrapper that sources its
+// env file from {{ secrets_dir }} (set -a) and then exec's the start command, so
+// all credentials come from /opt/secrets/*.env at process launch. interpreter
+// "none" makes PM2 run the wrapper directly. Only NODE_ENV/PORT are set inline.
+module.exports = {
+  apps: [
+{% for app in pm2_apps %}
+    {
+      name: "{{ app.name }}",
+      cwd: "{{ app.cwd }}",
+      script: "/bin/bash",
+      interpreter: "none",
+      args: ["-c", "{% if app.env_file is defined %}set -a; [ -f {{ app.env_file }} ] && . {{ app.env_file }}; set +a; {% endif %}exec {{ app.start_cmd | default('npm start') }}"],
+      env: {
+        NODE_ENV: "production"{% if app.port is defined and (app.port | string | length > 0) %},
+        PORT: "{{ app.port }}"{% endif %}
+
+      },
+      autorestart: true,
+      max_restarts: 10,
+      max_memory_restart: "{{ app.max_memory_restart | default('1G') }}"
+    }{{ "," if not loop.last else "" }}
+{% endfor %}
+  ]
+};

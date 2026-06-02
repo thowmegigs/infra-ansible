@@ -1,0 +1,45 @@
+# {{ ansible_managed }}
+server:
+  http_listen_address: 127.0.0.1
+  http_listen_port: {{ promtail_http_port }}
+  grpc_listen_port: 0
+
+positions:
+  filename: {{ promtail_positions_dir }}/positions.yaml
+
+clients:
+  - url: "{{ loki_push_url }}"
+
+scrape_configs:
+{% for src in log_sources %}
+  # ---- {{ src.app }} ----
+  - job_name: {{ src.app }}
+    static_configs:
+      - targets: [localhost]
+        labels:
+          job: applications
+          app: {{ src.app }}
+          host: {{ ansible_hostname }}
+          __path__: {{ src.path }}
+{% endfor %}
+
+  # ---- nginx (access + error) ----
+  - job_name: nginx
+    static_configs:
+      - targets: [localhost]
+        labels:
+          job: nginx
+          app: nginx
+          stream: access
+          host: {{ ansible_hostname }}
+          __path__: {{ nginx_log_dir }}/*access.log
+      - targets: [localhost]
+        labels:
+          job: nginx
+          app: nginx
+          stream: error
+          host: {{ ansible_hostname }}
+          __path__: {{ nginx_log_dir }}/*error.log
+
+# NOTE: the experimental image_to_product project (incl. its python systemd
+# services) is intentionally NOT collected here.

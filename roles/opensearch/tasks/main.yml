@@ -1,0 +1,99 @@
+---
+# Install OpenSearch (Apache-2.0, Elasticsearch-compatible) as a single node,
+# bound to localhost for internal use by the application stack.
+- name: "PHASE :: OPENSEARCH — install Apache-2.0 search engine"
+  debug:
+    msg: "========== OPENSEARCH :: {{ opensearch_version }}.x on {{ opensearch_http_host }}:{{ opensearch_http_port }} | security {{ 'disabled' if opensearch_disable_security else 'enabled' }} | heap {{ opensearch_heap_size }} =========="
+
+- name: Install prerequisites
+  apt:
+    name:
+      - apt-transport-https
+      - gnupg
+      - curl
+    state: present
+    update_cache: yes
+
+- name: Set vm.max_map_count for OpenSearch
+  ansible.posix.sysctl:
+    name: vm.max_map_count
+    value: "262144"
+    sysctl_set: yes
+    state: present
+    reload: yes
+
+- name: Download OpenSearch signing key
+  get_url:
+    url: https://artifacts.opensearch.org/publickeys/opensearch.pgp
+    dest: /usr/share/keyrings/opensearch.pgp.key
+    mode: "0644"
+
+- name: Dearmor OpenSearch signing key
+  command: >
+    gpg --batch --yes --dearmor
+    -o /usr/share/keyrings/opensearch-keyring.gpg
+    /usr/share/keyrings/opensearch.pgp.key
+  args:
+    creates: /usr/share/keyrings/opensearch-keyring.gpg
+
+- name: Add OpenSearch apt repository
+  apt_repository:
+    repo: "deb [signed-by=/usr/share/keyrings/opensearch-keyring.gpg] https://artifacts.opensearch.org/releases/bundle/opensearch/{{ opensearch_version }}.x/apt stable main"
+    filename: opensearch
+    state: present
+
+- name: Install OpenSearch
+  apt:
+    name: opensearch
+    state: present
+    update_cache: yes
+  environment:
+    OPENSEARCH_INITIAL_ADMIN_PASSWORD: "{{ opensearch_admin_password }}"
+
+- name: Configure OpenSearch (opensearch.yml)
+  template:
+    src: opensearch.yml.j2
+    dest: /etc/opensearch/opensearch.yml
+    owner: root
+    group: opensearch
+    mode: "0660"
+  notify: restart opensearch
+
+- name: Configure JVM heap size
+  copy:
+    dest: /etc/opensearch/jvm.options.d/heap.options
+    content: |
+      -Xms{{ opensearch_heap_size }}
+      -Xmx{{ opensearch_heap_size }}
+    owner: root
+    group: opensearch
+    mode: "0660"
+  notify: restart opensearch
+
+- name: Ensure OpenSearch is enabled and started
+  systemd:
+    name: opensearch
+    enabled: yes
+    state: started
+    daemon_reload: yes
+
+- name: Apply pending OpenSearch restart now (before health check)
+  meta: flush_handlers
+
+- name: Wait for OpenSearch to respond
+  uri:
+    url: "{{ 'http' if opensearch_disable_security else 'https' }}://{{ opensearch_http_host }}:{{ opensearch_http_port }}"
+    method: GET
+    validate_certs: no
+    user: "{{ omit if opensearch_disable_security else 'admin' }}"
+    password: "{{ omit if opensearch_disable_security else opensearch_admin_password }}"
+    force_basic_auth: "{{ not opensearch_disable_security }}"
+    status_code: 200
+  register: os_health
+  retries: 30
+  delay: 5
+  until: os_health.status is defined and os_health.status == 200
+
+- name: OpenSearch health
+  debug:
+    msg: "OpenSearch reachable at {{ opensearch_http_host }}:{{ opensearch_http_port }} (version {{ os_health.json.version.number | default('unknown') }})"

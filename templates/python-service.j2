@@ -1,0 +1,23 @@
+# {{ ansible_managed }}
+# systemd unit for {{ item.value.service_name }}
+[Unit]
+Description={{ item.value.service_name }} ({{ item.value.script }})
+After=network.target redis-server.service mysql.service
+Wants=redis-server.service
+
+[Service]
+Type=simple
+User={{ deploy_user }}
+Group={{ deploy_group }}
+WorkingDirectory={{ svc_workdir }}
+Environment=PORT={{ item.value.port }}
+Environment=PYTHONUNBUFFERED=1
+EnvironmentFile=-{{ python_env_file }}
+ExecStart={{ venv }}/bin/python {{ svc_workdir }}/{{ item.value.script }}
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

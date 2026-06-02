@@ -1,0 +1,34 @@
+---
+# ===========================================================================
+# Master playbook — full VPS provisioning + deployment
+#
+#   ansible-playbook -i inventory/local.ini site.yml
+#
+# Order matters:
+#   1. bootstrap  — base system, Node, PHP toolchains
+#   2. secrets    — render /opt/secrets/*.env from the encrypted vault
+#   3. mysql      — install MySQL, create databases/users
+#   4. redis      — install & start Redis
+#   5. opensearch — install OpenSearch (Apache-2.0 search engine, localhost)
+#   6. phpmyadmin — install phpMyAdmin (served at phpmyadmin.<domain>)
+#   7. deploy     — clone/pull repos, build apps, link .env, python systemd units
+#   8. pm2        — generate ecosystem, start/reload Node apps, persist on boot
+#   9. nginx      — generate vhosts for production domains
+#  10. ssl        — issue Let's Encrypt certificates for production domains
+#  11. logging    — Loki + Promtail (central log aggregation)
+#  12. monitoring — exporters + Prometheus + Grafana + crash/uptime alerting
+#  13. glitchtip  — self-hosted application error reporting (Docker)
+# ===========================================================================
+- import_playbook: playbooks/bootstrap.yml
+- import_playbook: playbooks/secrets.yml
+- import_playbook: playbooks/mysql.yml
+- import_playbook: playbooks/redis.yml
+- import_playbook: playbooks/opensearch.yml
+- import_playbook: playbooks/phpmyadmin.yml
+- import_playbook: playbooks/deploy.yml
+- import_playbook: playbooks/pm2.yml
+- import_playbook: playbooks/nginx.yml
+- import_playbook: playbooks/ssl.yml
+- import_playbook: playbooks/logging.yml
+- import_playbook: playbooks/monitoring.yml
+- import_playbook: playbooks/glitchtip.yml

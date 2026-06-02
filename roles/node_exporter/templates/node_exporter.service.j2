@@ -1,0 +1,19 @@
+# {{ ansible_managed }}
+[Unit]
+Description=Prometheus Node Exporter
+After=network.target
+
+[Service]
+Type=simple
+User={{ node_exporter_user }}
+Group={{ node_exporter_user }}
+ExecStart={{ node_exporter_bin }} \
+  --web.listen-address={{ node_exporter_listen_address }} \
+  --collector.systemd \
+  --collector.systemd.unit-include=^({{ monitored_systemd_units | map('regex_escape') | join('|') }})$ \
+  --collector.textfile.directory={{ pm2_textfile_dir }}
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

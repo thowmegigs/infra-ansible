@@ -1,0 +1,70 @@
+{
+  "uid": "application-errors",
+  "title": "6 - Application Errors",
+  "tags": ["colourindigo", "apps"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": { "from": "now-6h", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "app",
+        "type": "custom",
+        "query": "laravel-admin,api,seller-backend",
+        "current": { "text": "All", "value": "$__all" },
+        "includeAll": true,
+        "multi": true
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1, "type": "stat", "title": "Laravel errors (5m)",
+      "gridPos": { "h": 5, "w": 8, "x": 0, "y": 0 },
+      "datasource": { "type": "loki", "uid": "loki" },
+      "fieldConfig": { "defaults": { "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "red", "value": 1 } ] } }, "overrides": [] },
+      "targets": [ { "refId": "A", "expr": "sum(count_over_time({app=\"laravel-admin\"} |~ \"(?i)error|critical|emergency|alert\" [5m]))" } ]
+    },
+    {
+      "id": 2, "type": "stat", "title": "API errors (5m)",
+      "gridPos": { "h": 5, "w": 8, "x": 8, "y": 0 },
+      "datasource": { "type": "loki", "uid": "loki" },
+      "fieldConfig": { "defaults": { "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "red", "value": 1 } ] } }, "overrides": [] },
+      "targets": [ { "refId": "A", "expr": "sum(count_over_time({app=\"api\"} |~ \"(?i)error|exception|unhandled|fatal\" [5m]))" } ]
+    },
+    {
+      "id": 3, "type": "stat", "title": "Seller backend errors (5m)",
+      "gridPos": { "h": 5, "w": 8, "x": 16, "y": 0 },
+      "datasource": { "type": "loki", "uid": "loki" },
+      "fieldConfig": { "defaults": { "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "red", "value": 1 } ] } }, "overrides": [] },
+      "targets": [ { "refId": "A", "expr": "sum(count_over_time({app=\"seller-backend\"} |~ \"(?i)error|exception|unhandled|fatal\" [5m]))" } ]
+    },
+    {
+      "id": 4, "type": "timeseries", "title": "Errors by app",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 5 },
+      "datasource": { "type": "loki", "uid": "loki" },
+      "targets": [ { "refId": "A", "expr": "sum by (app) (count_over_time({app=~\"$app\"} |~ \"(?i)error|exception|fatal|critical\" [1m]))", "legendFormat": "{{app}}" } ]
+    },
+    {
+      "id": 5, "type": "timeseries", "title": "Fatal exceptions / crash loops",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 5 },
+      "datasource": { "type": "loki", "uid": "loki" },
+      "targets": [ { "refId": "A", "expr": "sum by (app) (count_over_time({app=~\"$app\"} |~ \"(?i)fatal|uncaught|unhandledrejection|segfault|out of memory\" [1m]))", "legendFormat": "{{app}}" } ]
+    },
+    {
+      "id": 6, "type": "timeseries", "title": "Process restarts (from PM2)",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 13 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [ { "refId": "A", "expr": "pm2_restarts_total{name=~\"front|api|seller_front|seller_backend\"}", "legendFormat": "{{name}}" } ]
+    },
+    {
+      "id": 7, "type": "logs", "title": "Error logs (filtered)",
+      "gridPos": { "h": 12, "w": 24, "x": 0, "y": 21 },
+      "datasource": { "type": "loki", "uid": "loki" },
+      "options": { "showTime": true, "wrapLogMessage": true, "sortOrder": "Descending" },
+      "targets": [ { "refId": "A", "expr": "{app=~\"$app\"} |~ \"(?i)error|exception|fatal|critical|warning\"" } ]
+    }
+  ]
+}

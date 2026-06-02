@@ -1,0 +1,81 @@
+---
+# mysqld_exporter — MySQL metrics for Prometheus (localhost only).
+- name: "PHASE :: MYSQLD_EXPORTER — install MySQL metrics exporter"
+  debug:
+    msg: "========== MYSQLD_EXPORTER :: v{{ mysqld_exporter_version }} on 127.0.0.1:{{ mysqld_exporter_port }} =========="
+
+- name: Ensure PyMySQL is present (for user creation)
+  apt:
+    name: python3-pymysql
+    state: present
+
+- name: Create the exporter MySQL user (minimal privileges)
+  community.mysql.mysql_user:
+    name: "{{ mysqld_exporter_db_user }}"
+    password: "{{ mysqld_exporter_db_password }}"
+    host: localhost
+    priv: "*.*:PROCESS,REPLICATION CLIENT,SELECT"
+    state: present
+    login_unix_socket: /run/mysqld/mysqld.sock
+  no_log: true
+
+- name: Create mysqld_exporter system user
+  user:
+    name: "{{ mysqld_exporter_user }}"
+    system: yes
+    shell: /usr/sbin/nologin
+    create_home: no
+
+- name: Ensure mysqld_exporter config dir exists
+  file:
+    path: "{{ mysqld_exporter_config_dir }}"
+    state: directory
+    owner: "{{ mysqld_exporter_user }}"
+    group: "{{ mysqld_exporter_user }}"
+    mode: "0750"
+
+- name: Write mysqld_exporter credentials (.my.cnf)
+  template:
+    src: my.cnf.j2
+    dest: "{{ mysqld_exporter_config_dir }}/.my.cnf"
+    owner: "{{ mysqld_exporter_user }}"
+    group: "{{ mysqld_exporter_user }}"
+    mode: "0600"
+  no_log: true
+  notify: restart mysqld_exporter
+
+- name: Download mysqld_exporter
+  get_url:
+    url: "https://github.com/prometheus/mysqld_exporter/releases/download/v{{ mysqld_exporter_version }}/mysqld_exporter-{{ mysqld_exporter_version }}.linux-{{ mysqld_exporter_arch }}.tar.gz"
+    dest: "/tmp/mysqld_exporter-{{ mysqld_exporter_version }}.tar.gz"
+    mode: "0644"
+
+- name: Extract mysqld_exporter
+  unarchive:
+    src: "/tmp/mysqld_exporter-{{ mysqld_exporter_version }}.tar.gz"
+    dest: /tmp
+    remote_src: yes
+
+- name: Install mysqld_exporter binary
+  copy:
+    src: "/tmp/mysqld_exporter-{{ mysqld_exporter_version }}.linux-{{ mysqld_exporter_arch }}/mysqld_exporter"
+    dest: "{{ mysqld_exporter_bin }}"
+    owner: root
+    group: root
+    mode: "0755"
+    remote_src: yes
+  notify: restart mysqld_exporter
+
+- name: Install mysqld_exporter systemd unit
+  template:
+    src: mysqld_exporter.service.j2
+    dest: /etc/systemd/system/mysqld_exporter.service
+    mode: "0644"
+  notify: restart mysqld_exporter
+
+- name: Ensure mysqld_exporter enabled and started
+  systemd:
+    name: mysqld_exporter
+    enabled: yes
+    state: started
+    daemon_reload: yes

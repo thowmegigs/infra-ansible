@@ -1,0 +1,9 @@
+---
+node_exporter_version: "1.8.2"
+node_exporter_arch: amd64
+node_exporter_user: node_exporter
+node_exporter_bin: /usr/local/bin/node_exporter
+# Internal only — never exposed publicly.
+node_exporter_listen_address: "127.0.0.1:9100"
+# PM2 metrics are written here by the pm2 textfile exporter and read by node_exporter.
+pm2_textfile_dir: /var/lib/node_exporter/textfile_collector

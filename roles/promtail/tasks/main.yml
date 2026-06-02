@@ -1,0 +1,66 @@
+---
+# Promtail — tails app/nginx/pm2 logs + python journal, ships to Loki with labels.
+- name: "PHASE :: PROMTAIL — install log collector"
+  debug:
+    msg: "========== PROMTAIL :: v{{ promtail_version }} -> {{ loki_push_url }} | {{ log_sources | length }} file source(s) + nginx + journal =========="
+
+- name: Ensure unzip is installed
+  apt:
+    name: unzip
+    state: present
+
+- name: Ensure promtail directories exist
+  file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop:
+    - "{{ promtail_config_dir }}"
+    - "{{ promtail_positions_dir }}"
+
+- name: Download Promtail
+  get_url:
+    url: "https://github.com/grafana/loki/releases/download/v{{ promtail_version }}/promtail-linux-{{ promtail_arch }}.zip"
+    dest: "/tmp/promtail-{{ promtail_version }}.zip"
+    mode: "0644"
+
+- name: Extract Promtail binary
+  unarchive:
+    src: "/tmp/promtail-{{ promtail_version }}.zip"
+    dest: /tmp
+    remote_src: yes
+
+- name: Install Promtail binary
+  copy:
+    src: "/tmp/promtail-linux-{{ promtail_arch }}"
+    dest: "{{ promtail_bin }}"
+    owner: root
+    group: root
+    mode: "0755"
+    remote_src: yes
+  notify: restart promtail
+
+- name: Configure Promtail
+  template:
+    src: promtail-config.yml.j2
+    dest: "{{ promtail_config_dir }}/promtail-config.yml"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: restart promtail
+
+- name: Install Promtail systemd unit
+  template:
+    src: promtail.service.j2
+    dest: /etc/systemd/system/promtail.service
+    mode: "0644"
+  notify: restart promtail
+
+- name: Ensure Promtail enabled and started
+  systemd:
+    name: promtail
+    enabled: yes
+    state: started
+    daemon_reload: yes

@@ -1,0 +1,65 @@
+---
+# blackbox_exporter — HTTP/DNS/TLS probing for uptime monitoring (localhost only).
+- name: "PHASE :: BLACKBOX_EXPORTER — install uptime prober"
+  debug:
+    msg: "========== BLACKBOX_EXPORTER :: v{{ blackbox_exporter_version }} on 127.0.0.1:{{ blackbox_exporter_port }} | {{ blackbox_targets | length }} target(s) =========="
+
+- name: Create blackbox_exporter system user
+  user:
+    name: "{{ blackbox_exporter_user }}"
+    system: yes
+    shell: /usr/sbin/nologin
+    create_home: no
+
+- name: Ensure blackbox_exporter config dir exists
+  file:
+    path: "{{ blackbox_exporter_config_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Download blackbox_exporter
+  get_url:
+    url: "https://github.com/prometheus/blackbox_exporter/releases/download/v{{ blackbox_exporter_version }}/blackbox_exporter-{{ blackbox_exporter_version }}.linux-{{ blackbox_exporter_arch }}.tar.gz"
+    dest: "/tmp/blackbox_exporter-{{ blackbox_exporter_version }}.tar.gz"
+    mode: "0644"
+
+- name: Extract blackbox_exporter
+  unarchive:
+    src: "/tmp/blackbox_exporter-{{ blackbox_exporter_version }}.tar.gz"
+    dest: /tmp
+    remote_src: yes
+
+- name: Install blackbox_exporter binary
+  copy:
+    src: "/tmp/blackbox_exporter-{{ blackbox_exporter_version }}.linux-{{ blackbox_exporter_arch }}/blackbox_exporter"
+    dest: "{{ blackbox_exporter_bin }}"
+    owner: root
+    group: root
+    mode: "0755"
+    remote_src: yes
+  notify: restart blackbox_exporter
+
+- name: Configure blackbox_exporter
+  template:
+    src: blackbox.yml.j2
+    dest: "{{ blackbox_exporter_config_dir }}/blackbox.yml"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: restart blackbox_exporter
+
+- name: Install blackbox_exporter systemd unit
+  template:
+    src: blackbox_exporter.service.j2
+    dest: /etc/systemd/system/blackbox_exporter.service
+    mode: "0644"
+  notify: restart blackbox_exporter
+
+- name: Ensure blackbox_exporter enabled and started
+  systemd:
+    name: blackbox_exporter
+    enabled: yes
+    state: started
+    daemon_reload: yes

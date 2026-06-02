@@ -1,0 +1,54 @@
+---
+# Install PHP {{ php_version }} (FPM/CLI/extensions) + Composer.
+- name: "PHASE :: PHP — install PHP {{ php_version }} + Composer"
+  debug:
+    msg: "========== PHP :: installing PHP {{ php_version }} (fpm/cli/extensions) + Composer =========="
+
+- name: Add ondrej/php PPA
+  apt_repository:
+    repo: ppa:ondrej/php
+    state: present
+    update_cache: yes
+
+- name: Install PHP and required extensions
+  apt:
+    name:
+      - "php{{ php_version }}"
+      - "php{{ php_version }}-fpm"
+      - "php{{ php_version }}-cli"
+      - "php{{ php_version }}-mysql"
+      - "php{{ php_version }}-mbstring"
+      - "php{{ php_version }}-xml"
+      - "php{{ php_version }}-curl"
+      - "php{{ php_version }}-zip"
+      - "php{{ php_version }}-bcmath"
+      - "php{{ php_version }}-gd"
+    state: present
+
+- name: Ensure PHP-FPM is enabled and started
+  service:
+    name: "php{{ php_version }}-fpm"
+    state: started
+    enabled: yes
+
+- name: Check whether Composer is installed
+  stat:
+    path: /usr/local/bin/composer
+  register: composer_bin
+
+- name: Download Composer installer
+  get_url:
+    url: https://getcomposer.org/installer
+    dest: /tmp/composer-setup.php
+    mode: "0644"
+  when: not composer_bin.stat.exists
+
+- name: Install Composer globally
+  command: php /tmp/composer-setup.php --install-dir=/usr/local/bin --filename=composer
+  when: not composer_bin.stat.exists
+
+- name: Remove Composer installer
+  file:
+    path: /tmp/composer-setup.php
+    state: absent
+  when: not composer_bin.stat.exists

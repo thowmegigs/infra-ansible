@@ -1,0 +1,76 @@
+{
+  "uid": "redis-health",
+  "title": "3 - Redis",
+  "tags": ["colourindigo", "redis"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": { "from": "now-6h", "to": "now" },
+  "panels": [
+    {
+      "id": 1, "type": "stat", "title": "Service up",
+      "gridPos": { "h": 5, "w": 6, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "mappings": [ { "type": "value", "options": { "0": { "text": "DOWN", "color": "red" }, "1": { "text": "UP", "color": "green" } } } ], "thresholds": { "mode": "absolute", "steps": [ { "color": "red", "value": null }, { "color": "green", "value": 1 } ] } }, "overrides": [] },
+      "options": { "colorMode": "background", "graphMode": "none" },
+      "targets": [ { "refId": "A", "expr": "redis_up", "instant": true } ]
+    },
+    {
+      "id": 2, "type": "stat", "title": "Memory used %",
+      "gridPos": { "h": 5, "w": 6, "x": 6, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "percent", "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "yellow", "value": 70 }, { "color": "red", "value": 85 } ] } }, "overrides": [] },
+      "targets": [ { "refId": "A", "expr": "(redis_memory_used_bytes / clamp_min(redis_memory_max_bytes, 1)) * 100" } ]
+    },
+    {
+      "id": 3, "type": "stat", "title": "Connected clients",
+      "gridPos": { "h": 5, "w": 6, "x": 12, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [ { "refId": "A", "expr": "redis_connected_clients" } ]
+    },
+    {
+      "id": 4, "type": "stat", "title": "Evictions (total)",
+      "gridPos": { "h": 5, "w": 6, "x": 18, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "red", "value": 1 } ] } }, "overrides": [] },
+      "targets": [ { "refId": "A", "expr": "sum(redis_evicted_keys_total)" } ]
+    },
+    {
+      "id": 5, "type": "timeseries", "title": "Memory used",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 5 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "bytes" }, "overrides": [] },
+      "targets": [ { "refId": "A", "expr": "redis_memory_used_bytes", "legendFormat": "used" } ]
+    },
+    {
+      "id": 6, "type": "timeseries", "title": "Command throughput (ops/s)",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 5 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [ { "refId": "A", "expr": "rate(redis_commands_processed_total[1m])", "legendFormat": "ops/s" } ]
+    },
+    {
+      "id": 7, "type": "timeseries", "title": "Hit ratio",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 13 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "percentunit", "min": 0, "max": 1 }, "overrides": [] },
+      "targets": [ { "refId": "A", "expr": "rate(redis_keyspace_hits_total[5m]) / clamp_min(rate(redis_keyspace_hits_total[5m]) + rate(redis_keyspace_misses_total[5m]), 1)", "legendFormat": "hit ratio" } ]
+    },
+    {
+      "id": 8, "type": "timeseries", "title": "Keys & evictions",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 13 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "refId": "A", "expr": "sum(redis_db_keys)", "legendFormat": "keys" },
+        { "refId": "B", "expr": "rate(redis_evicted_keys_total[5m])", "legendFormat": "evictions/s" }
+      ]
+    },
+    {
+      "id": 9, "type": "stat", "title": "Last RDB save OK (1 = ok)",
+      "gridPos": { "h": 5, "w": 24, "x": 0, "y": 21 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "thresholds": { "mode": "absolute", "steps": [ { "color": "red", "value": null }, { "color": "green", "value": 1 } ] } }, "overrides": [] },
+      "targets": [ { "refId": "A", "expr": "redis_rdb_last_bgsave_status", "instant": true } ]
+    }
+  ]
+}

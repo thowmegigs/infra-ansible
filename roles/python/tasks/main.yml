@@ -1,0 +1,12 @@
+---
+# Configure systemd units for the experimental project's python services.
+- name: "PHASE :: PYTHON — configure systemd units for AI services"
+  debug:
+    msg: "========== PYTHON :: creating venv + systemd services for experimental projects =========="
+
+- name: Configure python systemd services for each experimental project
+  include_tasks: service.yml
+  loop: "{{ experimental_projects | dict2items }}"
+  loop_control:
+    loop_var: exp_item
+    label: "{{ exp_item.key }}"

@@ -1,0 +1,37 @@
+---
+# Install Redis and ensure it is running + enabled on boot.
+- name: "PHASE :: REDIS — install & start Redis"
+  debug:
+    msg: "========== REDIS :: installing redis-server, enabling on boot =========="
+
+- name: Install redis-server
+  apt:
+    name: redis-server
+    state: present
+    update_cache: yes
+
+- name: Set Redis supervised mode to systemd
+  replace:
+    path: /etc/redis/redis.conf
+    regexp: '^supervised\s+no'
+    replace: 'supervised systemd'
+  notify: restart redis
+
+- name: Ensure Redis is enabled and started
+  service:
+    name: redis-server
+    state: started
+    enabled: yes
+
+- name: Apply pending Redis restart now (so PING reflects new config)
+  meta: flush_handlers
+
+- name: Verify Redis responds to PING
+  command: redis-cli ping
+  register: redis_ping
+  changed_when: false
+  failed_when: redis_ping.stdout != "PONG"
+
+- name: Redis health
+  debug:
+    msg: "Redis PING -> {{ redis_ping.stdout }}"

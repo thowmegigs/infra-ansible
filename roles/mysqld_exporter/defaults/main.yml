@@ -1,0 +1,10 @@
+---
+mysqld_exporter_version: "0.15.1"
+mysqld_exporter_arch: amd64
+mysqld_exporter_user: mysqld_exporter
+mysqld_exporter_bin: /usr/local/bin/mysqld_exporter
+mysqld_exporter_port: 9104
+mysqld_exporter_config_dir: /etc/mysqld_exporter
+# DB account the exporter uses (created here, localhost, minimal privileges).
+mysqld_exporter_db_user: exporter
+mysqld_exporter_db_password: "{{ vault_mysql_exporter_password | default('change_me') }}"

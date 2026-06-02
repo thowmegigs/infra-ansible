@@ -1,0 +1,100 @@
+---
+# Generate nginx vhosts for production domains (HTTP; certbot adds HTTPS later).
+- name: "PHASE :: NGINX — generate production vhosts"
+  debug:
+    msg: "========== NGINX :: sites = {{ nginx_sites | map(attribute='server_name') | join(' | ') }} =========="
+
+- name: Remove the default nginx site
+  file:
+    path: /etc/nginx/sites-enabled/default
+    state: absent
+  notify: reload nginx
+
+- name: Define the 'monitoring' access-log format (for the nginx exporter)
+  copy:
+    dest: /etc/nginx/conf.d/log_format.conf
+    content: |
+      # {{ ansible_managed }}
+      log_format monitoring '{{ nginx_monitoring_log_format }}';
+    mode: "0644"
+  notify: reload nginx
+
+- name: Show each vhost being generated
+  debug:
+    msg: >-
+      {{ item.name }} -> {{ item.server_name }}
+      ({{ 'php-fpm root=' + item.root if item.type == 'php' else 'proxy -> 127.0.0.1:' + (item.port | string) }})
+  loop: "{{ nginx_sites }}"
+  loop_control:
+    loop_var: item
+    label: "{{ item.name }}"
+
+- name: Render production vhost configurations
+  template:
+    src: "{{ inventory_dir }}/../templates/nginx-site.j2"
+    dest: "/etc/nginx/sites-available/{{ item.name }}.conf"
+    mode: "0644"
+  loop: "{{ nginx_sites }}"
+  loop_control:
+    loop_var: item
+    label: "{{ item.name }}"
+  notify: reload nginx
+
+- name: Enable production vhosts
+  file:
+    src: "/etc/nginx/sites-available/{{ item.name }}.conf"
+    dest: "/etc/nginx/sites-enabled/{{ item.name }}.conf"
+    state: link
+  loop: "{{ nginx_sites }}"
+  loop_control:
+    loop_var: item
+    label: "{{ item.name }}"
+  notify: reload nginx
+
+# ---------------------------------------------------------------------------
+# Experimental projects: IP-only, websocket-aware reverse proxy (no domain).
+# ---------------------------------------------------------------------------
+- name: Show experimental IP vhosts being generated
+  debug:
+    msg: >-
+      {{ item.key }} (IP-only) -> frontend 127.0.0.1:{{ item.value.frontend.port }} at / ,
+      backend 127.0.0.1:{{ item.value.backend.port }} at {{ experimental_nginx.backend_location }}/ (websocket-aware)
+  loop: "{{ experimental_projects | dict2items }}"
+  loop_control:
+    loop_var: item
+    label: "{{ item.key }}"
+  when:
+    - experimental_nginx.enabled | default(false)
+    - item.value.access_type | default('ip') == 'ip'
+
+- name: Render experimental IP-only vhosts
+  template:
+    src: "{{ inventory_dir }}/../templates/nginx-ip-site.j2"
+    dest: "/etc/nginx/sites-available/{{ item.key }}-ip.conf"
+    mode: "0644"
+  loop: "{{ experimental_projects | dict2items }}"
+  loop_control:
+    loop_var: item
+    label: "{{ item.key }}"
+  when:
+    - experimental_nginx.enabled | default(false)
+    - item.value.access_type | default('ip') == 'ip'
+  notify: reload nginx
+
+- name: Enable experimental IP-only vhosts
+  file:
+    src: "/etc/nginx/sites-available/{{ item.key }}-ip.conf"
+    dest: "/etc/nginx/sites-enabled/{{ item.key }}-ip.conf"
+    state: link
+  loop: "{{ experimental_projects | dict2items }}"
+  loop_control:
+    loop_var: item
+    label: "{{ item.key }}"
+  when:
+    - experimental_nginx.enabled | default(false)
+    - item.value.access_type | default('ip') == 'ip'
+  notify: reload nginx
+
+- name: Validate nginx configuration
+  command: nginx -t
+  changed_when: false

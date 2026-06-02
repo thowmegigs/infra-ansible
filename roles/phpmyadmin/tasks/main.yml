@@ -1,0 +1,70 @@
+---
+# Install phpMyAdmin into {{ phpmyadmin_root }} and configure cookie auth.
+# Served by nginx (type: php) at phpmyadmin.{{ domain }} — see nginx_sites.
+- name: "PHASE :: PHPMYADMIN — install & configure"
+  debug:
+    msg: "========== PHPMYADMIN :: install to {{ phpmyadmin_root }}, served at phpmyadmin.{{ domain }} (login user '{{ phpmyadmin_admin_user }}') =========="
+
+- name: Check whether phpMyAdmin is already installed
+  stat:
+    path: "{{ phpmyadmin_root }}/index.php"
+  register: pma_installed
+
+- name: Download phpMyAdmin (latest, all languages)
+  get_url:
+    url: https://www.phpmyadmin.net/downloads/phpMyAdmin-latest-all-languages.tar.gz
+    dest: /tmp/phpmyadmin-latest.tar.gz
+    mode: "0644"
+  when: not pma_installed.stat.exists
+
+- name: Ensure phpMyAdmin directory exists
+  file:
+    path: "{{ phpmyadmin_root }}"
+    state: directory
+    owner: www-data
+    group: www-data
+    mode: "0755"
+
+- name: Extract phpMyAdmin
+  unarchive:
+    src: /tmp/phpmyadmin-latest.tar.gz
+    dest: "{{ phpmyadmin_root }}"
+    remote_src: yes
+    extra_opts:
+      - --strip-components=1
+    owner: www-data
+    group: www-data
+  when: not pma_installed.stat.exists
+
+- name: Ensure phpMyAdmin tmp directory exists
+  file:
+    path: "{{ phpmyadmin_root }}/tmp"
+    state: directory
+    owner: www-data
+    group: www-data
+    mode: "0750"
+
+- name: Check whether phpMyAdmin config already exists
+  stat:
+    path: "{{ phpmyadmin_root }}/config.inc.php"
+  register: pma_config
+
+- name: Generate a blowfish secret
+  command: openssl rand -base64 32
+  register: pma_blowfish
+  when: not pma_config.stat.exists
+  changed_when: false
+
+- name: Write phpMyAdmin configuration
+  template:
+    src: config.inc.php.j2
+    dest: "{{ phpmyadmin_root }}/config.inc.php"
+    owner: www-data
+    group: www-data
+    mode: "0640"
+  when: not pma_config.stat.exists
+
+- name: Remove phpMyAdmin download archive
+  file:
+    path: /tmp/phpmyadmin-latest.tar.gz
+    state: absent

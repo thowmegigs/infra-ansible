@@ -1,0 +1,57 @@
+---
+# Generate + manage systemd units for one experimental project's python services.
+- name: "[{{ exp_item.key }}] >>> Configuring python services"
+  debug:
+    msg: >-
+      venv={{ exp_item.value.python.venv }} | workdir={{ exp_item.value.root }}/{{ exp_item.value.python.root }} |
+      services: {% for s in exp_item.value.python.services.values() %}{{ s.service_name }} (port {{ s.port }}, {{ s.script }}){{ ", " if not loop.last else "" }}{% endfor %}
+
+- name: "[{{ exp_item.key }}] Ensure python virtualenv exists"
+  command: "python3 -m venv {{ exp_item.value.python.venv }}"
+  args:
+    creates: "{{ exp_item.value.python.venv }}/bin/python"
+
+- name: "[{{ exp_item.key }}] Ensure venv ownership"
+  file:
+    path: "{{ exp_item.value.python.venv }}"
+    state: directory
+    owner: "{{ deploy_user }}"
+    group: "{{ deploy_group }}"
+    recurse: yes
+
+- name: "[{{ exp_item.key }}] Render systemd unit files"
+  template:
+    src: "{{ inventory_dir }}/../templates/python-service.j2"
+    dest: "/etc/systemd/system/{{ item.value.service_name }}.service"
+    mode: "0644"
+  loop: "{{ exp_item.value.python.services | dict2items }}"
+  loop_control:
+    label: "{{ item.value.service_name }}"
+  vars:
+    svc_workdir: "{{ exp_item.value.root }}/{{ exp_item.value.python.root }}"
+    venv: "{{ exp_item.value.python.venv }}"
+  register: unit_files
+
+- name: "[{{ exp_item.key }}] Reload systemd daemon"
+  systemd:
+    daemon_reload: yes
+  when: unit_files is changed
+
+- name: "[{{ exp_item.key }}] Enable and restart changed services"
+  systemd:
+    name: "{{ item.value.service_name }}"
+    enabled: yes
+    state: restarted
+  loop: "{{ exp_item.value.python.services | dict2items }}"
+  loop_control:
+    label: "{{ item.value.service_name }}"
+  when: unit_files is changed or (secrets_changed | default(false))
+
+- name: "[{{ exp_item.key }}] Ensure services are enabled and running"
+  systemd:
+    name: "{{ item.value.service_name }}"
+    enabled: yes
+    state: started
+  loop: "{{ exp_item.value.python.services | dict2items }}"
+  loop_control:
+    label: "{{ item.value.service_name }}"

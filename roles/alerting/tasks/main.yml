@@ -1,0 +1,43 @@
+---
+# Provision Grafana unified alerting: email contact point, notification policy,
+# and all alert rule groups. No manual Grafana config needed after deploy.
+- name: "PHASE :: ALERTING — provision Grafana alert rules + email contact point"
+  debug:
+    msg: "========== ALERTING :: {{ grafana_alert_rules | length }} rule(s) in {{ grafana_alert_rules | map(attribute='group') | unique | list | length }} group(s) -> {{ alert_email_to }} =========="
+
+- name: Ensure Grafana alerting provisioning dir exists
+  file:
+    path: "{{ grafana_provisioning_dir }}/alerting"
+    state: directory
+    owner: root
+    group: "{{ grafana_user }}"
+    mode: "0750"
+
+- name: Provision email contact point
+  template:
+    src: contactpoints.yml.j2
+    dest: "{{ grafana_provisioning_dir }}/alerting/contactpoints.yml"
+    owner: root
+    group: "{{ grafana_user }}"
+    mode: "0640"
+  when: alerting_email_enabled | default(false)
+  notify: restart grafana
+
+- name: Provision notification policy
+  template:
+    src: policies.yml.j2
+    dest: "{{ grafana_provisioning_dir }}/alerting/policies.yml"
+    owner: root
+    group: "{{ grafana_user }}"
+    mode: "0640"
+  when: alerting_email_enabled | default(false)
+  notify: restart grafana
+
+- name: Provision alert rules
+  template:
+    src: rules.yml.j2
+    dest: "{{ grafana_provisioning_dir }}/alerting/rules.yml"
+    owner: root
+    group: "{{ grafana_user }}"
+    mode: "0640"
+  notify: restart grafana

@@ -1,0 +1,11 @@
+---
+# Optional: dump MySQL databases and archive web roots for disaster recovery.
+#   ansible-playbook -i inventory/local.ini playbooks/backup.yml
+- name: Backup databases and web roots
+  hosts: local
+  become: yes
+  vars_files:
+    - "{{ inventory_dir }}/../group_vars/all.yml"
+    - "{{ inventory_dir }}/../group_vars/production.yml"
+  roles:
+    - backup

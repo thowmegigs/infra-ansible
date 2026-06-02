@@ -1,0 +1,7 @@
+---
+process_exporter_version: "0.8.4"
+process_exporter_arch: amd64
+process_exporter_user: process_exporter
+process_exporter_bin: /usr/local/bin/process-exporter
+process_exporter_config_dir: /etc/process-exporter
+process_exporter_port: 9256

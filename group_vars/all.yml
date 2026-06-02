@@ -1,0 +1,405 @@
+---
+# ===========================================================================
+# Global configuration for the colourindigo VPS stack
+#
+# NOTE: project-specific configuration lives in group_vars/production.yml
+#       (loaded explicitly by every playbook via vars_files).
+#       This file is auto-loaded by Ansible for ALL hosts.
+# ===========================================================================
+
+# --- Deploy identity ---------------------------------------------------------
+deploy_user: devuser
+deploy_group: devuser
+
+# --- Toolchain versions ------------------------------------------------------
+node_major: "20"            # NodeSource apt repo line (node_20.x)
+node_version: "20.20.1"     # exact pinned version; set "" to install latest of node_major
+php_version: "8.2"
+
+# --- Paths -------------------------------------------------------------------
+www_root: /var/www
+pm2_home: /root
+pm2_ecosystem_path: "{{ www_root }}/ecosystem.config.js"
+
+# --- Web ownership / permissions ---------------------------------------------
+# Applied to /var/www and every project directory. Code is owned by the deploy
+# user; group is www-data so PHP-FPM/nginx can read, with setgid on directories
+# so new files inherit the group.
+web_owner: "{{ deploy_user }}"
+web_group: www-data
+web_dir_mode: "02775"
+# Paths (relative to a Laravel project root) that must be writable by www-data.
+laravel_writable_paths:
+  - storage
+  - bootstrap/cache
+
+# --- SSL / certbot -----------------------------------------------------------
+ssl_email: "admin@{{ domain }}"
+
+# --- Backups -----------------------------------------------------------------
+backup_dir: /var/backups/infra
+
+# --- Secrets -----------------------------------------------------------------
+# Centralized env files live in /opt/secrets (root:root, dir 0700, files 0600).
+# The real .env files are kept in this repo under env/<project>/.env (git-ignored)
+# and copied to /opt/secrets by the `secrets` role. Apps never keep a .env in
+# their own repo; PM2/Laravel/Express/Python all consume /opt/secrets/*.env.
+secrets_dir: /opt/secrets
+python_env_file: "{{ secrets_dir }}/image-to-product-python.env"
+
+# Map each source .env (relative to this repo root) to its /opt/secrets target.
+# A missing source is skipped with a warning (not fatal).
+secret_env_files:
+  - { src: "env/frontend/.env",                 dest: "{{ secrets_dir }}/front.env" }
+  - { src: "env/api/.env",                      dest: "{{ secrets_dir }}/api.env" }
+  - { src: "env/admin/.env",                    dest: "{{ secrets_dir }}/admin.env" }
+  - { src: "env/seller_frontend/.env",          dest: "{{ secrets_dir }}/seller-front.env" }
+  - { src: "env/seller-backend/.env",           dest: "{{ secrets_dir }}/seller-backend.env" }
+  - { src: "env/image-to-product-backend/.env", dest: "{{ secrets_dir }}/image-to-product-backend.env" }
+  - { src: "env/image-to-product-python/.env",  dest: "{{ secrets_dir }}/image-to-product-python.env" }
+
+# ===========================================================================
+# Observability — Grafana + Loki + Promtail + Node Exporter + Prometheus
+# (Prometheus is included so Node Exporter metrics are actually stored and the
+#  VPS-health dashboard works; it is lightweight with short retention.)
+# All components bind to 127.0.0.1 — only Grafana is meant to be reverse-proxied.
+# ===========================================================================
+# Log sources collected by Promtail (file-based). Paths derive from project vars.
+# PRODUCTION ONLY — the experimental image_to_product project (frontend, backend,
+# and its python services) is intentionally EXCLUDED from logging/monitoring.
+log_sources:
+  - { app: laravel-admin,  path: "{{ projects.admin.path }}/storage/logs/*.log" }
+  - { app: api,            path: "{{ projects.api.path }}/logs/*.log" }
+  - { app: seller-backend, path: "{{ projects.seller_backend.path }}/logs/*.log" }
+  - { app: pm2,            path: "{{ pm2_home }}/.pm2/logs/*.log" }
+
+# Nginx access/error logs.
+nginx_log_dir: /var/log/nginx
+# Custom access-log format (adds request/upstream times + status) shared by the
+# nginx vhosts and the nginx log exporter so it can derive response-time metrics.
+nginx_monitoring_log_format: '$remote_addr - $remote_user [$time_local] "$request" $status $body_bytes_sent "$http_referer" "$http_user_agent" rt=$request_time urt=$upstream_response_time'
+
+# Shared internal bind addresses/ports (all 127.0.0.1 — not public).
+# Note: 3100 is used by the experimental frontend, so Loki/Grafana avoid it.
+loki_http_address: "127.0.0.1"
+loki_http_port: 3310
+node_exporter_listen_address: "127.0.0.1:9100"
+prometheus_listen_address: "127.0.0.1:9090"
+grafana_http_address: "127.0.0.1"
+grafana_http_port: 3300
+
+# --- Exporters (all bind 127.0.0.1, scraped by Prometheus) -------------------
+redis_exporter_port: 9121
+mysqld_exporter_port: 9104
+nginxlog_exporter_port: 4040
+pm2_textfile_dir: /var/lib/node_exporter/textfile_collector
+
+# Prometheus scrape jobs (extensible — add a line + re-run monitoring.yml).
+prometheus_jobs:
+  - { job: prometheus, target: "{{ prometheus_listen_address }}" }
+  - { job: node,       target: "{{ node_exporter_listen_address }}" }
+  - { job: redis,      target: "127.0.0.1:{{ redis_exporter_port }}" }
+  - { job: mysql,      target: "127.0.0.1:{{ mysqld_exporter_port }}" }
+  - { job: nginx,      target: "127.0.0.1:{{ nginxlog_exporter_port }}" }
+  - { job: process,    target: "127.0.0.1:{{ process_exporter_port }}" }
+
+# Service-health / crash detection: node_exporter's systemd collector exports
+# up/down + restart counts for exactly these PRODUCTION units.
+monitored_systemd_units:
+  - nginx.service
+  - mysql.service
+  - redis-server.service
+  - "php{{ php_version }}-fpm.service"
+  - pm2-root.service
+  - loki.service
+  - promtail.service
+  - prometheus.service
+  - grafana-server.service
+
+# --- Log retention / rotation ------------------------------------------------
+app_log_rotate_days: 14             # logrotate for app file logs
+pm2_logrotate_max_size: "10M"
+pm2_logrotate_retain: 14
+pm2_logrotate_compress: true
+# Production app log files rotated by logrotate (nginx has its own logrotate;
+# pm2 uses pm2-logrotate; Loki enforces its own retention).
+logrotate_app_paths:
+  - "{{ projects.api.path }}/logs/*.log"
+  - "{{ projects.seller_backend.path }}/logs/*.log"
+  - "{{ projects.admin.path }}/storage/logs/*.log"
+
+# ===========================================================================
+# Crash detection (process_exporter), uptime (blackbox_exporter), Grafana
+# alerting (email), and GlitchTip error reporting. Reuses the existing
+# Prometheus + Grafana; does NOT touch Loki/Promtail.
+# ===========================================================================
+process_exporter_port: 9256
+blackbox_exporter_port: 9115
+
+# Process groups tracked by process_exporter (crash / disappeared-process alerts).
+process_groups:
+  - { name: nginx,            comm: ["nginx"] }
+  - { name: php-fpm,          comm: ["php-fpm{{ php_version }}"] }
+  - { name: redis,            comm: ["redis-server"] }
+  - { name: mysqld,           comm: ["mysqld"] }
+  - { name: node,             comm: ["node"] }
+  - { name: pm2,              cmdline: ["PM2 v"] }
+  - { name: laravel-queue,    cmdline: ["artisan queue:work", "artisan queue:listen", "artisan horizon:work"] }
+  - { name: laravel-schedule, cmdline: ["artisan schedule:run", "artisan schedule:work"] }
+  - { name: docker,           comm: ["dockerd", "containerd"] }
+
+# Processes that MUST be running (alert if 0 instances). Add laravel-queue /
+# laravel-schedule here once you run those workers.
+process_required:
+  - nginx
+  - php-fpm
+  - redis
+  - mysqld
+  - node
+
+# Blackbox uptime probes (HTTP). Add health endpoints as your apps expose them.
+blackbox_targets:
+  - { name: main-website,   url: "https://{{ domain }}" }
+  - { name: admin-panel,    url: "https://admin.{{ domain }}" }
+  - { name: api,            url: "https://api.{{ domain }}" }
+  - { name: seller-website, url: "https://seller.{{ domain }}" }
+  - { name: seller-api,     url: "https://seller-api.{{ domain }}" }
+  # - { name: api-health,   url: "https://api.{{ domain }}/health" }
+
+# --- Resource alert thresholds (all configurable) ----------------------------
+alert_cpu_high: 90                 # % CPU
+alert_mem_high: 90                 # % RAM
+alert_disk_used_high: 85           # % disk used (/)
+alert_inode_used_high: 85          # % inodes used
+alert_load_high: 4                 # 1-min load average
+alert_swap_used_high: 80           # % swap used
+alert_response_time_seconds: 2     # blackbox probe duration
+alert_cert_expiry_days: 14         # TLS cert expiry warning
+alert_pm2_restarts: 5              # pm2 restart-loop threshold
+alert_redis_mem_high: 85           # % redis maxmemory
+alert_app_error_rate: 10           # app log errors per 5m (Loki)
+
+# --- Email alerting (Grafana SMTP + contact point) ---------------------------
+alerting_email_enabled: true
+alert_email_to: "throwmegigs@gmail.com"
+alert_smtp_host: "smtp.zoho.in"
+alert_smtp_port: 587
+alert_smtp_user: "support@{{ domain }}"
+alert_smtp_from_address: "support@{{ domain }}"
+alert_smtp_from_name: "ColourIndigo Alerts"
+alert_environment: production
+# vault_alert_smtp_password -> group_vars/secrets.yml
+
+# --- GlitchTip (self-hosted Sentry-compatible error reporting, via Docker) ----
+glitchtip_enabled: true
+glitchtip_dir: /opt/glitchtip
+glitchtip_image: "glitchtip/glitchtip:latest"
+glitchtip_listen_address: "127.0.0.1"
+glitchtip_listen_port: 8080
+glitchtip_domain: "glitchtip.{{ domain }}"
+glitchtip_expose_via_nginx: false   # flip on once glitchtip.<domain> DNS exists
+glitchtip_from_email: "support@{{ domain }}"
+glitchtip_email_to_admin: "{{ alert_email_to }}"
+# vault_glitchtip_secret_key, vault_glitchtip_postgres_password -> secrets.yml
+
+# Grafana reverse-proxy (future). The domain may not exist yet, so this is OFF
+# by default and gets NO SSL. Flip to true once logs.colourindigo.com resolves.
+grafana_domain: "logs.{{ domain }}"
+grafana_expose_via_nginx: false
+
+# --- OpenSearch (Apache-2.0 search engine, Elasticsearch-compatible) ----------
+# Bound to localhost for internal use by the apps (http://127.0.0.1:9200).
+# The security plugin is disabled because access is localhost-only — simplest
+# integration (no TLS/auth) for Laravel Scout / Node search clients.
+opensearch_version: "2"                 # apt repo major line (2.x)
+opensearch_cluster_name: colourindigo-search
+opensearch_http_host: "127.0.0.1"
+opensearch_http_port: 9200
+opensearch_heap_size: "512m"            # JVM heap (raise on a larger VPS)
+opensearch_disable_security: true       # localhost-only: skip TLS/auth
+# Only used when opensearch_disable_security is false (required by the 2.12+
+# installer regardless): keep a strong value to satisfy the package postinstall.
+opensearch_admin_password: "Change_Me_OpenSearch_123!"
+
+# --- phpMyAdmin --------------------------------------------------------------
+# Served at https://phpmyadmin.{{ domain }} (cookie auth — log in with the
+# MySQL "admin" user defined in mysql_users below).
+phpmyadmin_root: /usr/share/phpmyadmin
+phpmyadmin_admin_user: admin
+# Login password is the vault value (vault_phpmyadmin_password) — see secrets.yml.
+
+# --- Shared uploads ----------------------------------------------------------
+# Product-image uploads folder shared by the Laravel admin and the seller admin.
+# Not part of any git repo, so Ansible creates it (owned by www-data, group
+# writable + setgid so PHP-FPM and the Node apps can both write to it).
+shared_uploads_dir: /var/www/uploads
+shared_uploads_owner: www-data
+shared_uploads_group: www-data
+shared_uploads_mode: "02775"
+# Symlink the shared folder into each app so Express and the Laravel admin all
+# read/write the SAME files under /var/www/uploads. Adjust to match how each app
+# expects to reach its uploads path.
+shared_uploads_links:
+  - "{{ projects.admin.path }}/public/uploads"        # Laravel admin (served by nginx via public/)
+  - "{{ projects.api.path }}/uploads"                 # Express API
+  - "{{ projects.seller_backend.path }}/uploads"      # seller Express backend
+
+# ===========================================================================
+# MySQL databases & users (idempotent creation)
+# Change the passwords below before running in production.
+# ===========================================================================
+# Single shared database used by ALL projects (matches the env files + dump).
+mysql_databases:
+  - name: colourdb
+
+# Optional one-time seed dump. Imported into mysql_import_db, but ONLY when that
+# database is still empty (idempotent). The dump ships in this repo (git-ignored
+# data) and is referenced relative to the repo root. Set "" to skip importing.
+mysql_import_db: colourdb
+mysql_import_file: "{{ inventory_dir }}/../colourdb.sql"
+
+# Passwords come from the encrypted vault (group_vars/secrets.yml), loaded by
+# mysql.yml. No plaintext secrets here.
+mysql_users:
+  - name: appuser
+    password: "{{ vault_app_db_password }}"
+    priv: "colourdb.*:ALL"
+    host: localhost
+
+  # phpMyAdmin login user — full privileges across all databases.
+  - name: "{{ phpmyadmin_admin_user }}"
+    password: "{{ vault_phpmyadmin_password }}"
+    priv: "*.*:ALL,GRANT"
+    host: localhost
+
+# ===========================================================================
+# Nginx production sites (derived from production.yml projects)
+#
+# The experimental project (image_to_product) is intentionally NOT listed:
+# it is reachable by IP + port only, with no domain and no SSL.
+# ===========================================================================
+nginx_sites:
+  - name: front
+    server_name: "{{ domain }} www.{{ domain }}"
+    type: proxy
+    port: "{{ projects.front.port }}"
+    ssl_domains:
+      - "{{ domain }}"
+      - "www.{{ domain }}"
+
+  - name: admin
+    server_name: "admin.{{ domain }}"
+    type: php
+    root: "{{ projects.admin.path }}/public"
+    ssl_domains:
+      - "admin.{{ domain }}"
+
+  - name: api
+    server_name: "api.{{ domain }}"
+    type: proxy
+    port: "{{ projects.api.port }}"
+    ssl_domains:
+      - "api.{{ domain }}"
+
+  - name: seller_front
+    server_name: "seller.{{ domain }}"
+    type: proxy
+    port: "{{ projects.seller_front.port }}"
+    ssl_domains:
+      - "seller.{{ domain }}"
+
+  - name: seller_backend
+    server_name: "seller-api.{{ domain }}"
+    type: proxy
+    port: "{{ projects.seller_backend.port }}"
+    ssl_domains:
+      - "seller-api.{{ domain }}"
+
+  - name: phpmyadmin
+    server_name: "phpmyadmin.{{ domain }}"
+    type: php
+    root: "{{ phpmyadmin_root }}"
+    ssl_domains:
+      - "phpmyadmin.{{ domain }}"
+
+# ===========================================================================
+# PM2 managed Node.js applications
+#
+# NO secrets live in ecosystem.config.js. Each app is launched via a bash
+# wrapper that `source`s its env_file from /opt/secrets before exec'ing the
+# start command (see templates/ecosystem.config.js.j2). Only NODE_ENV and PORT
+# (non-secret) are set inline.
+# ===========================================================================
+pm2_apps:
+  - name: front
+    cwd: "{{ projects.front.path }}"
+    port: "{{ projects.front.port }}"
+    env_file: "{{ secrets_dir }}/front.env"
+
+  - name: api
+    cwd: "{{ projects.api.path }}"
+    port: "{{ projects.api.port }}"
+    env_file: "{{ secrets_dir }}/api.env"
+
+  - name: seller_front
+    cwd: "{{ projects.seller_front.path }}"
+    port: "{{ projects.seller_front.port }}"
+    env_file: "{{ secrets_dir }}/seller-front.env"
+
+  - name: seller_backend
+    cwd: "{{ projects.seller_backend.path }}"
+    port: "{{ projects.seller_backend.port }}"
+    env_file: "{{ secrets_dir }}/seller-backend.env"
+
+  - name: image_to_product_front
+    cwd: "{{ experimental_projects.image_to_product.root }}/{{ experimental_projects.image_to_product.frontend.path }}"
+    port: "{{ experimental_projects.image_to_product.frontend.port }}"
+
+  - name: image_to_product_backend
+    cwd: "{{ experimental_projects.image_to_product.root }}/{{ experimental_projects.image_to_product.backend.path }}"
+    port: "{{ experimental_projects.image_to_product.backend.port }}"
+    env_file: "{{ secrets_dir }}/image-to-product-backend.env"
+
+  # Background queue worker for the experimental backend (queues + Redis).
+  # No port (it does not listen). Adjust `start_cmd` to match your package.json
+  # script, e.g. "npm run worker" or "npm run start:worker".
+  - name: image_to_product_worker
+    cwd: "{{ experimental_projects.image_to_product.root }}/{{ experimental_projects.image_to_product.backend.path }}"
+    start_cmd: "npm run worker"
+    env_file: "{{ secrets_dir }}/image-to-product-backend.env"
+
+# ===========================================================================
+# Experimental project — IP-only access (NO domain, NO SSL).
+#
+# A websocket-aware nginx reverse proxy is exposed on the server IP:
+#   http://SERVER_IP/                 -> frontend  (Next.js, port 3100)
+#   http://SERVER_IP{{ experimental_nginx.backend_location }}/  -> backend (Express + WS, port 4100)
+# The python AI services (4003/4004) stay internal.
+# ===========================================================================
+experimental_nginx:
+  enabled: true
+  listen_port: 80            # served as the default_server on the bare IP
+  backend_location: /api     # path prefix proxied to the express backend
+
+# ===========================================================================
+# Python AI stack for the experimental project's Qwen services.
+# Installed into the project's venv ({{ experimental_projects.image_to_product.python.venv }}).
+# ===========================================================================
+ai_python:
+  install_cpu_torch: true
+  torch_index_url: "https://download.pytorch.org/whl/cpu"
+  # Core model-serving + image-pipeline dependencies (torch installed separately).
+  pip_packages:
+    - transformers
+    - accelerate
+    - flask
+    - requests
+    - opencv-python-headless
+    - numpy
+    - scikit-learn
+    - pillow
+    - rembg
+  # Pre-download / warm up the Qwen models (downloads SEVERAL GB into the deploy
+  # user's ~/.cache/huggingface). Off by default — turn on for a first provision.
+  warmup: false
+  warmup_script: load_qwen.py   # relative to the python scripts dir

@@ -1,0 +1,8 @@
+# {{ ansible_managed }}
+[Unit]
+Description=Export PM2 process metrics for node_exporter (textfile)
+After=pm2-root.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/pm2-metrics.sh

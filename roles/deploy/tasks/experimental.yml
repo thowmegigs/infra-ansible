@@ -1,0 +1,121 @@
+---
+# Deploy the image_to_product monorepo: ONE clone, then build each subdir.
+- name: "[{{ exp_item.key }}] >>> Starting monorepo deploy"
+  debug:
+    msg: >-
+      Deploying experimental monorepo '{{ exp_item.key }}' (single clone) to {{ exp_item.value.root }}.
+      frontend={{ exp_item.value.frontend.path }}:{{ exp_item.value.frontend.port }},
+      backend={{ exp_item.value.backend.path }}:{{ exp_item.value.backend.port }},
+      python venv={{ exp_item.value.python.venv }}
+
+- name: "[{{ exp_item.key }}] Ensure parent directory exists"
+  file:
+    path: "{{ exp_item.value.root | dirname }}"
+    state: directory
+    mode: "0755"
+
+- name: "[{{ exp_item.key }}] Clone or update monorepo (single clone)"
+  git:
+    repo: "{{ exp_item.value.repo }}"
+    dest: "{{ exp_item.value.root }}"
+    version: "{{ exp_item.value.branch | default('main') }}"
+    accept_hostkey: yes
+    force: yes
+
+- name: "[{{ exp_item.key }}] Ensure correct ownership"
+  file:
+    path: "{{ exp_item.value.root }}"
+    state: directory
+    owner: "{{ deploy_user }}"
+    group: "{{ web_group }}"
+    recurse: yes
+
+- name: "[{{ exp_item.key }}] Frontend — install dependencies & build"
+  shell: |
+    set -e
+    npm install
+    npm run build
+  args:
+    chdir: "{{ exp_item.value.root }}/{{ exp_item.value.frontend.path }}"
+  changed_when: true
+
+- name: "[{{ exp_item.key }}] Backend — install dependencies & build (if present)"
+  shell: |
+    set -e
+    npm install
+    npm run build --if-present
+  args:
+    chdir: "{{ exp_item.value.root }}/{{ exp_item.value.backend.path }}"
+  changed_when: true
+
+- name: "[{{ exp_item.key }}] Python — create virtualenv"
+  command: "python3 -m venv {{ exp_item.value.python.venv }}"
+  args:
+    creates: "{{ exp_item.value.python.venv }}/bin/python"
+
+- name: "[{{ exp_item.key }}] Python — AI stack plan"
+  debug:
+    msg: >-
+      venv={{ exp_item.value.python.venv }} |
+      CPU torch={{ ai_python.install_cpu_torch | default(false) }} (index {{ ai_python.torch_index_url }}) |
+      packages={{ ai_python.pip_packages | default([]) | join(', ') }} |
+      model warmup={{ ai_python.warmup | default(false) }}
+
+- name: "[{{ exp_item.key }}] Python — upgrade pip/setuptools/wheel"
+  pip:
+    name:
+      - pip
+      - setuptools
+      - wheel
+    state: latest
+    virtualenv: "{{ exp_item.value.python.venv }}"
+
+- name: "[{{ exp_item.key }}] Python — install CPU PyTorch"
+  pip:
+    name: torch
+    virtualenv: "{{ exp_item.value.python.venv }}"
+    extra_args: "--index-url {{ ai_python.torch_index_url }}"
+  when: ai_python.install_cpu_torch | default(false)
+
+- name: "[{{ exp_item.key }}] Python — install AI dependencies"
+  pip:
+    name: "{{ ai_python.pip_packages }}"
+    virtualenv: "{{ exp_item.value.python.venv }}"
+  when: ai_python.pip_packages | default([]) | length > 0
+
+- name: "[{{ exp_item.key }}] Python — check for requirements.txt"
+  stat:
+    path: "{{ exp_item.value.root }}/{{ exp_item.value.python.root }}/requirements.txt"
+  register: exp_py_reqs
+
+- name: "[{{ exp_item.key }}] Python — install requirements.txt (if present)"
+  pip:
+    requirements: "{{ exp_item.value.root }}/{{ exp_item.value.python.root }}/requirements.txt"
+    virtualenv: "{{ exp_item.value.python.venv }}"
+  when: exp_py_reqs.stat.exists
+
+- name: "[{{ exp_item.key }}] Python — fix venv ownership before model warmup"
+  file:
+    path: "{{ exp_item.value.python.venv }}"
+    state: directory
+    owner: "{{ deploy_user }}"
+    group: "{{ web_group }}"
+    recurse: yes
+
+- name: "[{{ exp_item.key }}] Python — check for model warmup script"
+  stat:
+    path: "{{ exp_item.value.root }}/{{ exp_item.value.python.root }}/{{ ai_python.warmup_script }}"
+  register: exp_warmup_script
+  when: ai_python.warmup | default(false)
+
+- name: "[{{ exp_item.key }}] Python — pre-download / warm up Qwen models"
+  command: "{{ exp_item.value.python.venv }}/bin/python {{ ai_python.warmup_script }}"
+  args:
+    chdir: "{{ exp_item.value.root }}/{{ exp_item.value.python.root }}"
+  become: yes
+  become_user: "{{ deploy_user }}"
+  when:
+    - ai_python.warmup | default(false)
+    - exp_warmup_script.stat is defined
+    - exp_warmup_script.stat.exists
+  changed_when: true

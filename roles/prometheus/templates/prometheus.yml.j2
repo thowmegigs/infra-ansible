@@ -1,0 +1,37 @@
+# {{ ansible_managed }}
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+# Alert rules can be added later under /etc/prometheus/rules/*.yml without
+# redesign — Grafana already has Prometheus + Loki datasources wired up.
+rule_files: []
+
+scrape_configs:
+{% for j in prometheus_jobs %}
+  - job_name: {{ j.job }}
+    static_configs:
+      - targets: ["{{ j.target }}"]
+        labels:
+          instance: "{{ ansible_hostname }}"
+{% endfor %}
+{% if blackbox_targets is defined and (blackbox_targets | length > 0) %}
+
+  # Blackbox uptime probes — Prometheus passes each URL to the blackbox exporter.
+  - job_name: blackbox-http
+    metrics_path: /probe
+    params:
+      module: [http_2xx]
+    static_configs:
+      - targets:
+{% for t in blackbox_targets %}
+          - {{ t.url }}
+{% endfor %}
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: "127.0.0.1:{{ blackbox_exporter_port }}"
+{% endif %}

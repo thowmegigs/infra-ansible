@@ -1,0 +1,81 @@
+{
+  "uid": "nginx-health",
+  "title": "5 - Nginx",
+  "tags": ["colourindigo", "nginx"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": { "from": "now-6h", "to": "now" },
+  "panels": [
+    {
+      "id": 1, "type": "stat", "title": "Service up",
+      "gridPos": { "h": 5, "w": 6, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "mappings": [ { "type": "value", "options": { "0": { "text": "DOWN", "color": "red" }, "1": { "text": "UP", "color": "green" } } } ], "thresholds": { "mode": "absolute", "steps": [ { "color": "red", "value": null }, { "color": "green", "value": 1 } ] } }, "overrides": [] },
+      "options": { "colorMode": "background", "graphMode": "none" },
+      "targets": [ { "refId": "A", "expr": "node_systemd_unit_state{name=\"nginx.service\", state=\"active\"}", "instant": true } ]
+    },
+    {
+      "id": 2, "type": "stat", "title": "Requests/s",
+      "gridPos": { "h": 5, "w": 6, "x": 6, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [ { "refId": "A", "expr": "sum(rate(nginx_http_response_count_total[1m]))" } ]
+    },
+    {
+      "id": 3, "type": "stat", "title": "4xx/s",
+      "gridPos": { "h": 5, "w": 6, "x": 12, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [ { "refId": "A", "expr": "sum(rate(nginx_http_response_count_total{status=~\"4..\"}[1m]))" } ]
+    },
+    {
+      "id": 4, "type": "stat", "title": "5xx/s",
+      "gridPos": { "h": 5, "w": 6, "x": 18, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "red", "value": 0.01 } ] } }, "overrides": [] },
+      "targets": [ { "refId": "A", "expr": "sum(rate(nginx_http_response_count_total{status=~\"5..\"}[1m]))" } ]
+    },
+    {
+      "id": 5, "type": "timeseries", "title": "Status codes (req/s)",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 5 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "refId": "A", "expr": "sum(rate(nginx_http_response_count_total{status=~\"2..\"}[1m]))", "legendFormat": "2xx" },
+        { "refId": "B", "expr": "sum(rate(nginx_http_response_count_total{status=~\"3..\"}[1m]))", "legendFormat": "3xx" },
+        { "refId": "C", "expr": "sum(rate(nginx_http_response_count_total{status=~\"4..\"}[1m]))", "legendFormat": "4xx" },
+        { "refId": "D", "expr": "sum(rate(nginx_http_response_count_total{status=~\"5..\"}[1m]))", "legendFormat": "5xx" }
+      ]
+    },
+    {
+      "id": 6, "type": "timeseries", "title": "Response time (p50/p95/p99)",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 5 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "histogram_quantile(0.50, sum(rate(nginx_http_response_time_seconds_bucket[5m])) by (le))", "legendFormat": "p50" },
+        { "refId": "B", "expr": "histogram_quantile(0.95, sum(rate(nginx_http_response_time_seconds_bucket[5m])) by (le))", "legendFormat": "p95" },
+        { "refId": "C", "expr": "histogram_quantile(0.99, sum(rate(nginx_http_response_time_seconds_bucket[5m])) by (le))", "legendFormat": "p99" }
+      ]
+    },
+    {
+      "id": 7, "type": "timeseries", "title": "Upstream response time (p95)",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 13 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+      "targets": [ { "refId": "A", "expr": "histogram_quantile(0.95, sum(rate(nginx_http_upstream_time_seconds_bucket[5m])) by (le))", "legendFormat": "upstream p95" } ]
+    },
+    {
+      "id": 8, "type": "timeseries", "title": "Upstream / 5xx failures",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 13 },
+      "datasource": { "type": "loki", "uid": "loki" },
+      "targets": [ { "refId": "A", "expr": "sum(count_over_time({app=\"nginx\", stream=\"error\"} |~ \"(?i)upstream|failed|timed out\" [1m]))", "legendFormat": "upstream errors" } ]
+    },
+    {
+      "id": 9, "type": "logs", "title": "Nginx error log",
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 21 },
+      "datasource": { "type": "loki", "uid": "loki" },
+      "options": { "showTime": true, "wrapLogMessage": true, "sortOrder": "Descending" },
+      "targets": [ { "refId": "A", "expr": "{app=\"nginx\", stream=\"error\"}" } ]
+    }
+  ]
+}

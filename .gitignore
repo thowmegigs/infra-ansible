@@ -1,0 +1,26 @@
+# ===========================================================================
+# NEVER commit secrets.
+# ===========================================================================
+
+# Real application env files (copied to /opt/secrets by the secrets role)
+env/
+*.env
+
+# Real secret values — keep local, scp to the VPS (see secrets.yml.example).
+group_vars/secrets.yml
+
+# Database dumps (may contain user data/PII) — scp to the VPS, don't commit.
+*.sql
+
+# Ansible Vault password files
+.vault_pass
+.vault_pass.txt
+vault_pass*
+
+# Ansible artifacts
+*.retry
+*.log
+
+# Editor / OS noise
+.DS_Store
+Thumbs.db

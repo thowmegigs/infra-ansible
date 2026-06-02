@@ -1,0 +1,17 @@
+# {{ ansible_managed }}
+[Unit]
+Description=Prometheus Process Exporter
+After=network.target
+
+[Service]
+Type=simple
+# root so it can see cmdline of processes owned by www-data / mysql / etc.
+User=root
+ExecStart={{ process_exporter_bin }} \
+  --config.path {{ process_exporter_config_dir }}/config.yml \
+  --web.listen-address 127.0.0.1:{{ process_exporter_port }}
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

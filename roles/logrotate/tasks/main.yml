@@ -1,0 +1,19 @@
+---
+# logrotate for production application file logs (api / seller-backend / Laravel).
+# nginx ships its own logrotate; PM2 uses pm2-logrotate; Loki self-retains.
+- name: "PHASE :: LOGROTATE — rotate application logs"
+  debug:
+    msg: "========== LOGROTATE :: {{ logrotate_app_paths | length }} path(s), keep {{ app_log_rotate_days }} days =========="
+
+- name: Ensure logrotate is installed
+  apt:
+    name: logrotate
+    state: present
+
+- name: Configure logrotate for application logs
+  template:
+    src: colourindigo-apps.j2
+    dest: /etc/logrotate.d/colourindigo-apps
+    owner: root
+    group: root
+    mode: "0644"

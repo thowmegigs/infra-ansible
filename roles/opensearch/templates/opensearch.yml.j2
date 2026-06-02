@@ -1,0 +1,17 @@
+# {{ ansible_managed }}
+cluster.name: {{ opensearch_cluster_name }}
+node.name: {{ ansible_hostname }}
+
+network.host: {{ opensearch_http_host }}
+http.port: {{ opensearch_http_port }}
+discovery.type: single-node
+
+path.data: /var/lib/opensearch
+path.logs: /var/log/opensearch
+
+bootstrap.memory_lock: false
+{% if opensearch_disable_security %}
+
+# Localhost-only internal deployment: disable the security plugin (no TLS/auth).
+plugins.security.disabled: true
+{% endif %}

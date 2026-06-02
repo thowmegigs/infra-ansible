@@ -1,0 +1,82 @@
+---
+# GlitchTip — self-hosted error reporting (Sentry SDK compatible), Docker Compose.
+# Reuses Docker if already present; installs it otherwise.
+- name: "PHASE :: GLITCHTIP — deploy error reporting"
+  debug:
+    msg: "========== GLITCHTIP :: enabled={{ glitchtip_enabled }} | {{ glitchtip_listen_address }}:{{ glitchtip_listen_port }} | nginx={{ glitchtip_expose_via_nginx }} =========="
+
+- name: GlitchTip block
+  when: glitchtip_enabled | default(true)
+  block:
+    - name: Check whether Docker is already installed
+      command: docker --version
+      register: glitchtip_docker_check
+      failed_when: false
+      changed_when: false
+
+    - name: Install Docker engine + compose plugin (only if missing)
+      apt:
+        name:
+          - docker.io
+          - docker-compose-v2
+        state: present
+        update_cache: yes
+      when: glitchtip_docker_check.rc != 0
+
+    - name: Ensure Docker is running and enabled
+      service:
+        name: docker
+        state: started
+        enabled: yes
+
+    - name: Ensure GlitchTip directory exists
+      file:
+        path: "{{ glitchtip_dir }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0750"
+
+    - name: Render GlitchTip environment file
+      template:
+        src: glitchtip.env.j2
+        dest: "{{ glitchtip_dir }}/.env"
+        owner: root
+        group: root
+        mode: "0600"
+      no_log: true
+      register: glitchtip_env
+
+    - name: Render GlitchTip docker-compose file
+      template:
+        src: docker-compose.yml.j2
+        dest: "{{ glitchtip_dir }}/docker-compose.yml"
+        owner: root
+        group: root
+        mode: "0644"
+      register: glitchtip_compose
+
+    - name: Pull and (re)start the GlitchTip stack
+      command: docker compose up -d --remove-orphans
+      args:
+        chdir: "{{ glitchtip_dir }}"
+      register: glitchtip_up
+      changed_when: >-
+        ('Started' in glitchtip_up.stderr) or ('Created' in glitchtip_up.stderr)
+        or ('Recreated' in glitchtip_up.stderr) or ('Pulled' in glitchtip_up.stderr)
+
+    - name: Deploy GlitchTip nginx vhost (optional, no SSL until domain exists)
+      template:
+        src: glitchtip-nginx.conf.j2
+        dest: /etc/nginx/sites-available/glitchtip.conf
+        mode: "0644"
+      when: glitchtip_expose_via_nginx | default(false)
+      notify: reload nginx
+
+    - name: Enable GlitchTip nginx vhost
+      file:
+        src: /etc/nginx/sites-available/glitchtip.conf
+        dest: /etc/nginx/sites-enabled/glitchtip.conf
+        state: link
+      when: glitchtip_expose_via_nginx | default(false)
+      notify: reload nginx

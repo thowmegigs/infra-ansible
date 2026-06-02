@@ -1,0 +1,6 @@
+# {{ ansible_managed }}
+[client]
+host=localhost
+user={{ mysqld_exporter_db_user }}
+password={{ mysqld_exporter_db_password }}
+socket=/run/mysqld/mysqld.sock

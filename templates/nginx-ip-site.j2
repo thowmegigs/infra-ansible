@@ -1,0 +1,48 @@
+# {{ ansible_managed }}
+# IP-only access for experimental project "{{ item.key }}" — NO domain, NO SSL.
+# WebSocket-aware reverse proxy (Express backend uses ws + queues).
+upstream {{ item.key }}_frontend {
+    server 127.0.0.1:{{ item.value.frontend.port }};
+}
+upstream {{ item.key }}_backend {
+    server 127.0.0.1:{{ item.value.backend.port }};
+}
+
+server {
+    listen {{ experimental_nginx.listen_port }} default_server;
+    listen [::]:{{ experimental_nginx.listen_port }} default_server;
+    server_name _;
+
+    access_log /var/log/nginx/{{ item.key }}.access.log;
+    error_log  /var/log/nginx/{{ item.key }}.error.log;
+
+    client_max_body_size 100M;
+
+    # --- Express backend: REST + WebSocket ---------------------------------
+    location {{ experimental_nginx.backend_location }}/ {
+        proxy_pass http://{{ item.key }}_backend/;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 86400;
+        proxy_send_timeout 86400;
+    }
+
+    # --- Next.js frontend (incl. its HMR/websocket) ------------------------
+    location / {
+        proxy_pass http://{{ item.key }}_frontend;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 86400;
+        proxy_send_timeout 86400;
+    }
+}

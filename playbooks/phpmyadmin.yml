@@ -1,0 +1,10 @@
+---
+# Install & configure phpMyAdmin (served at phpmyadmin.{{ domain }}).
+- name: Install phpMyAdmin
+  hosts: local
+  become: yes
+  vars_files:
+    - "{{ inventory_dir }}/../group_vars/all.yml"
+    - "{{ inventory_dir }}/../group_vars/production.yml"
+  roles:
+    - phpmyadmin

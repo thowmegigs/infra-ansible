@@ -1,0 +1,66 @@
+---
+# process-exporter — per-process / per-service presence + resource metrics.
+# Used for crash / "required process disappeared" detection (localhost only).
+- name: "PHASE :: PROCESS_EXPORTER — install process metrics exporter"
+  debug:
+    msg: "========== PROCESS_EXPORTER :: v{{ process_exporter_version }} on 127.0.0.1:{{ process_exporter_port }} | groups: {{ process_groups | map(attribute='name') | join(', ') }} =========="
+
+- name: Create process_exporter system user
+  user:
+    name: "{{ process_exporter_user }}"
+    system: yes
+    shell: /usr/sbin/nologin
+    create_home: no
+
+- name: Ensure process-exporter config dir exists
+  file:
+    path: "{{ process_exporter_config_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Download process-exporter
+  get_url:
+    url: "https://github.com/ncabatoff/process-exporter/releases/download/v{{ process_exporter_version }}/process-exporter-{{ process_exporter_version }}.linux-{{ process_exporter_arch }}.tar.gz"
+    dest: "/tmp/process-exporter-{{ process_exporter_version }}.tar.gz"
+    mode: "0644"
+
+- name: Extract process-exporter
+  unarchive:
+    src: "/tmp/process-exporter-{{ process_exporter_version }}.tar.gz"
+    dest: /tmp
+    remote_src: yes
+
+- name: Install process-exporter binary
+  copy:
+    src: "/tmp/process-exporter-{{ process_exporter_version }}.linux-{{ process_exporter_arch }}/process-exporter"
+    dest: "{{ process_exporter_bin }}"
+    owner: root
+    group: root
+    mode: "0755"
+    remote_src: yes
+  notify: restart process_exporter
+
+- name: Configure process-exporter
+  template:
+    src: process-exporter.yml.j2
+    dest: "{{ process_exporter_config_dir }}/config.yml"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: restart process_exporter
+
+- name: Install process-exporter systemd unit
+  template:
+    src: process_exporter.service.j2
+    dest: /etc/systemd/system/process_exporter.service
+    mode: "0644"
+  notify: restart process_exporter
+
+- name: Ensure process-exporter enabled and started
+  systemd:
+    name: process_exporter
+    enabled: yes
+    state: started
+    daemon_reload: yes

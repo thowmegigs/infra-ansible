@@ -1,0 +1,22 @@
+# {{ ansible_managed }}
+apiVersion: 1
+
+contactPoints:
+  - orgId: 1
+    name: {{ alert_contact_point }}
+    receivers:
+      - uid: {{ alert_contact_point }}
+        type: email
+        settings:
+          addresses: "{{ alert_email_to }}"
+          singleEmail: false
+          message: |
+            {% raw %}{{ .CommonAnnotations.summary }}{% endraw +%}
+
+            Environment : {{ alert_environment }}
+            Host        : {{ ansible_hostname }}
+            Severity    : {% raw %}{{ .CommonLabels.severity }}{% endraw +%}
+            Service     : {% raw %}{{ .CommonLabels.app }}{{ .CommonLabels.service }}{{ .CommonLabels.groupname }}{{ .CommonLabels.name }}{% endraw +%}
+            Status      : {% raw %}{{ .Status }}{% endraw +%}
+            Reason      : {% raw %}{{ .CommonAnnotations.description }}{% endraw +%}
+            Time        : {% raw %}{{ .StartsAt }}{% endraw +%}

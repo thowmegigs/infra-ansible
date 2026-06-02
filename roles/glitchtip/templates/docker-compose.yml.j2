@@ -1,0 +1,55 @@
+# {{ ansible_managed }}
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: glitchtip
+      POSTGRES_PASSWORD: "{{ vault_glitchtip_postgres_password }}"
+      POSTGRES_DB: glitchtip
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U glitchtip"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+
+  web:
+    image: {{ glitchtip_image }}
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    ports:
+      - "{{ glitchtip_listen_address }}:{{ glitchtip_listen_port }}:8080"
+    env_file: .env
+
+  worker:
+    image: {{ glitchtip_image }}
+    restart: unless-stopped
+    command: ./bin/run-celery-with-beat.sh
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    env_file: .env
+
+  migrate:
+    image: {{ glitchtip_image }}
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: ./bin/run-migrate.sh
+    env_file: .env
+
+volumes:
+  pg-data:

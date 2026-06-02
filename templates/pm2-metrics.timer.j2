@@ -1,0 +1,11 @@
+# {{ ansible_managed }}
+[Unit]
+Description=Run the PM2 metrics exporter every 15s
+
+[Timer]
+OnBootSec=30s
+OnUnitActiveSec=15s
+AccuracySec=1s
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,68 @@
+{
+  "uid": "mysql-health",
+  "title": "4 - MySQL",
+  "tags": ["colourindigo", "mysql"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": { "from": "now-6h", "to": "now" },
+  "panels": [
+    {
+      "id": 1, "type": "stat", "title": "Service up",
+      "gridPos": { "h": 5, "w": 6, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "mappings": [ { "type": "value", "options": { "0": { "text": "DOWN", "color": "red" }, "1": { "text": "UP", "color": "green" } } } ], "thresholds": { "mode": "absolute", "steps": [ { "color": "red", "value": null }, { "color": "green", "value": 1 } ] } }, "overrides": [] },
+      "options": { "colorMode": "background", "graphMode": "none" },
+      "targets": [ { "refId": "A", "expr": "mysql_up", "instant": true } ]
+    },
+    {
+      "id": 2, "type": "stat", "title": "Connections",
+      "gridPos": { "h": 5, "w": 6, "x": 6, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [ { "refId": "A", "expr": "mysql_global_status_threads_connected" } ]
+    },
+    {
+      "id": 3, "type": "stat", "title": "Slow queries (total)",
+      "gridPos": { "h": 5, "w": 6, "x": 12, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "yellow", "value": 1 } ] } }, "overrides": [] },
+      "targets": [ { "refId": "A", "expr": "mysql_global_status_slow_queries" } ]
+    },
+    {
+      "id": 4, "type": "stat", "title": "Uptime",
+      "gridPos": { "h": 5, "w": 6, "x": 18, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+      "targets": [ { "refId": "A", "expr": "mysql_global_status_uptime" } ]
+    },
+    {
+      "id": 5, "type": "timeseries", "title": "Queries / sec",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 5 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [ { "refId": "A", "expr": "rate(mysql_global_status_queries[1m])", "legendFormat": "queries/s" } ]
+    },
+    {
+      "id": 6, "type": "timeseries", "title": "Slow queries / sec",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 5 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [ { "refId": "A", "expr": "rate(mysql_global_status_slow_queries[5m])", "legendFormat": "slow/s" } ]
+    },
+    {
+      "id": 7, "type": "timeseries", "title": "Connections (used vs max)",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 13 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "refId": "A", "expr": "mysql_global_status_threads_connected", "legendFormat": "connected" },
+        { "refId": "B", "expr": "mysql_global_variables_max_connections", "legendFormat": "max" }
+      ]
+    },
+    {
+      "id": 8, "type": "timeseries", "title": "InnoDB buffer pool data",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 13 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "bytes" }, "overrides": [] },
+      "targets": [ { "refId": "A", "expr": "mysql_global_status_innodb_buffer_pool_bytes_data", "legendFormat": "buffer data" } ]
+    }
+  ]
+}

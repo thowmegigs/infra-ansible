@@ -1,0 +1,50 @@
+---
+# Install Node.js from NodeSource + PM2 globally.
+- name: "PHASE :: NODE — install Node.js + PM2"
+  debug:
+    msg: "========== NODE :: NodeSource node_{{ node_major }}.x | target version: {{ node_version if (node_version | length > 0) else 'latest of ' + node_major }} + global PM2 =========="
+
+- name: Download NodeSource signing key
+  get_url:
+    url: https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key
+    dest: /usr/share/keyrings/nodesource-repo.gpg.key
+    mode: "0644"
+
+- name: Dearmor NodeSource signing key
+  command: >
+    gpg --batch --yes --dearmor
+    -o /usr/share/keyrings/nodesource.gpg
+    /usr/share/keyrings/nodesource-repo.gpg.key
+  args:
+    creates: /usr/share/keyrings/nodesource.gpg
+
+- name: Add NodeSource apt repository
+  apt_repository:
+    repo: "deb [signed-by=/usr/share/keyrings/nodesource.gpg] https://deb.nodesource.com/node_{{ node_major }}.x nodistro main"
+    filename: nodesource
+    state: present
+
+- name: Install Node.js (pinned to {{ node_version }})
+  apt:
+    name: "nodejs={{ node_apt_version | default(node_version + '-1nodesource1') }}"
+    state: present
+    update_cache: yes
+    allow_downgrade: true
+  when: node_version | length > 0
+
+- name: Install Node.js (latest of node_{{ node_major }}.x)
+  apt:
+    name: nodejs
+    state: present
+    update_cache: yes
+  when: node_version | length == 0
+
+- name: Check whether PM2 is installed
+  command: pm2 --version
+  register: pm2_check
+  failed_when: false
+  changed_when: false
+
+- name: Install PM2 globally
+  command: npm install -g pm2
+  when: pm2_check.rc != 0

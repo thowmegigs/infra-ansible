@@ -1,0 +1,7 @@
+---
+redis_exporter_version: "1.62.0"
+redis_exporter_arch: amd64
+redis_exporter_user: redis_exporter
+redis_exporter_bin: /usr/local/bin/redis_exporter
+redis_exporter_port: 9121
+redis_exporter_addr: "redis://127.0.0.1:6379"

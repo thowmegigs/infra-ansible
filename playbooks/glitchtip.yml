@@ -1,0 +1,12 @@
+---
+# Self-hosted GlitchTip (Sentry-compatible error reporting) via Docker.
+# Secrets (SECRET_KEY, postgres password, SMTP) come from the vault.
+- name: Deploy GlitchTip error reporting
+  hosts: local
+  become: yes
+  vars_files:
+    - "{{ inventory_dir }}/../group_vars/all.yml"
+    - "{{ inventory_dir }}/../group_vars/production.yml"
+    - "{{ inventory_dir }}/../group_vars/secrets.yml"
+  roles:
+    - glitchtip

@@ -1,0 +1,110 @@
+---
+# Grafana — dashboards + Loki/Prometheus datasources, auto-provisioned.
+- name: "PHASE :: GRAFANA — install dashboards + datasources"
+  debug:
+    msg: "========== GRAFANA :: {{ grafana_http_address }}:{{ grafana_http_port }} | datasources: Loki + Prometheus | nginx exposed: {{ grafana_expose_via_nginx }} =========="
+
+- name: Install Grafana prerequisites
+  apt:
+    name:
+      - apt-transport-https
+      - software-properties-common
+      - gnupg
+    state: present
+    update_cache: yes
+
+- name: Download Grafana signing key
+  get_url:
+    url: https://apt.grafana.com/gpg.key
+    dest: /usr/share/keyrings/grafana.gpg.key
+    mode: "0644"
+
+- name: Dearmor Grafana signing key
+  command: gpg --batch --yes --dearmor -o /usr/share/keyrings/grafana.gpg /usr/share/keyrings/grafana.gpg.key
+  args:
+    creates: /usr/share/keyrings/grafana.gpg
+
+- name: Add Grafana apt repository
+  apt_repository:
+    repo: "deb [signed-by=/usr/share/keyrings/grafana.gpg] https://apt.grafana.com stable main"
+    filename: grafana
+    state: present
+
+- name: Install Grafana (OSS)
+  apt:
+    name: grafana
+    state: present
+    update_cache: yes
+
+- name: Configure Grafana (grafana.ini)
+  template:
+    src: grafana.ini.j2
+    dest: /etc/grafana/grafana.ini
+    owner: root
+    group: "{{ grafana_user }}"
+    mode: "0640"
+  no_log: true
+  notify: restart grafana
+
+- name: Ensure provisioning + dashboard directories exist
+  file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ grafana_user }}"
+    group: "{{ grafana_user }}"
+    mode: "0755"
+  loop:
+    - "{{ grafana_provisioning_dir }}/datasources"
+    - "{{ grafana_provisioning_dir }}/dashboards"
+    - "{{ grafana_dashboards_dir }}"
+
+- name: Provision Loki + Prometheus datasources
+  template:
+    src: datasources.yml.j2
+    dest: "{{ grafana_provisioning_dir }}/datasources/colourindigo.yml"
+    owner: root
+    group: "{{ grafana_user }}"
+    mode: "0640"
+  notify: restart grafana
+
+- name: Provision dashboard provider
+  template:
+    src: dashboards-provider.yml.j2
+    dest: "{{ grafana_provisioning_dir }}/dashboards/colourindigo.yml"
+    owner: root
+    group: "{{ grafana_user }}"
+    mode: "0640"
+  notify: restart grafana
+
+- name: Install dashboards
+  copy:
+    src: "dashboards/"
+    dest: "{{ grafana_dashboards_dir }}/"
+    owner: "{{ grafana_user }}"
+    group: "{{ grafana_user }}"
+    mode: "0644"
+  notify: restart grafana
+
+- name: Ensure Grafana enabled and started
+  systemd:
+    name: grafana-server
+    enabled: yes
+    state: started
+    daemon_reload: yes
+
+# Optional: reverse-proxy Grafana through nginx (no SSL until the domain exists).
+- name: Deploy Grafana nginx vhost
+  template:
+    src: grafana-nginx.conf.j2
+    dest: /etc/nginx/sites-available/grafana.conf
+    mode: "0644"
+  when: grafana_expose_via_nginx | default(false)
+  notify: reload nginx
+
+- name: Enable Grafana nginx vhost
+  file:
+    src: /etc/nginx/sites-available/grafana.conf
+    dest: /etc/nginx/sites-enabled/grafana.conf
+    state: link
+  when: grafana_expose_via_nginx | default(false)
+  notify: reload nginx

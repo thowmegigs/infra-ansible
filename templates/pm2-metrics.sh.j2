@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+# {{ ansible_managed }}
+# Emit PM2 process metrics in Prometheus textfile format for node_exporter.
+# Experimental image_to_product apps are excluded.
+set -euo pipefail
+
+OUT="{{ pm2_textfile_dir }}/pm2.prom"
+TMP="$(mktemp)"
+NOW_MS="$(date +%s%3N)"
+
+if ! command -v pm2 >/dev/null 2>&1; then
+  rm -f "$TMP"; exit 0
+fi
+
+pm2 jlist 2>/dev/null | jq -r --argjson now "$NOW_MS" '
+  [ .[] | select(.name | test("image_to_product") | not) ] as $apps |
+  "# HELP pm2_up Whether the PM2 process is online (1) or not (0).",
+  "# TYPE pm2_up gauge",
+  ( $apps[] | "pm2_up{name=\"\(.name)\"} \(if .pm2_env.status == "online" then 1 else 0 end)" ),
+  "# HELP pm2_restarts_total PM2 process restart count.",
+  "# TYPE pm2_restarts_total counter",
+  ( $apps[] | "pm2_restarts_total{name=\"\(.name)\"} \(.pm2_env.restart_time // 0)" ),
+  "# HELP pm2_unstable_restarts_total PM2 unstable (crash-loop) restart count.",
+  "# TYPE pm2_unstable_restarts_total counter",
+  ( $apps[] | "pm2_unstable_restarts_total{name=\"\(.name)\"} \(.pm2_env.unstable_restarts // 0)" ),
+  "# HELP pm2_cpu_percent PM2 process CPU usage percent.",
+  "# TYPE pm2_cpu_percent gauge",
+  ( $apps[] | "pm2_cpu_percent{name=\"\(.name)\"} \(.monit.cpu // 0)" ),
+  "# HELP pm2_memory_bytes PM2 process memory usage in bytes.",
+  "# TYPE pm2_memory_bytes gauge",
+  ( $apps[] | "pm2_memory_bytes{name=\"\(.name)\"} \(.monit.memory // 0)" ),
+  "# HELP pm2_uptime_seconds PM2 process uptime in seconds.",
+  "# TYPE pm2_uptime_seconds gauge",
+  ( $apps[] | "pm2_uptime_seconds{name=\"\(.name)\"} \((($now - (.pm2_env.pm_uptime // $now)) / 1000) | floor)" )
+' > "$TMP" 2>/dev/null || { rm -f "$TMP"; exit 0; }
+
+chmod 0644 "$TMP"
+mv "$TMP" "$OUT"

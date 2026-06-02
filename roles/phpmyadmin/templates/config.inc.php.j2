@@ -1,0 +1,21 @@
+<?php
+/* {{ ansible_managed }} */
+declare(strict_types=1);
+
+/* The "cookie" auth secret. */
+$cfg['blowfish_secret'] = '{{ pma_blowfish.stdout }}';
+
+$i = 0;
+
+/* Local MySQL server, cookie (login form) authentication. */
+$i++;
+$cfg['Servers'][$i]['auth_type']        = 'cookie';
+$cfg['Servers'][$i]['host']             = 'localhost';
+$cfg['Servers'][$i]['socket']           = '/run/mysqld/mysqld.sock';
+$cfg['Servers'][$i]['compress']         = false;
+$cfg['Servers'][$i]['AllowNoPassword']  = false;
+
+/* Directories for temp work / uploads. */
+$cfg['TempDir']   = '{{ phpmyadmin_root }}/tmp';
+$cfg['UploadDir'] = '';
+$cfg['SaveDir']   = '';

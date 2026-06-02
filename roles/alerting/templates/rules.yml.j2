@@ -1,0 +1,58 @@
+# {{ ansible_managed }}
+apiVersion: 1
+
+groups:
+{% for grp in (grafana_alert_rules | map(attribute='group') | unique | list) %}
+  - orgId: 1
+    name: "{{ grp }}"
+    folder: "{{ alert_folder }}"
+    interval: 1m
+    rules:
+{% for r in grafana_alert_rules if r.group == grp %}
+      - uid: {{ r.uid }}
+        title: "{{ r.title }}"
+        condition: C
+        for: {{ r.for | default('5m') }}
+        noDataState: OK
+        execErrState: Alerting
+        labels:
+          severity: "{{ r.severity }}"
+          env: "{{ alert_environment }}"
+        annotations:
+          summary: "{{ r.summary }}"
+          description: "{{ r.summary }} | env={{ alert_environment }} | host={{ ansible_hostname }}"
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: {{ r.datasource }}
+            model:
+              refId: A
+              instant: true
+              editorMode: code
+              expr: '{{ r.expr }}'
+              intervalMs: 1000
+              maxDataPoints: 43200
+{% if r.datasource == 'loki' %}
+              queryType: instant
+{% endif %}
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: {{ r.op }}
+                    params: [{{ r.threshold }}]
+                  operator:
+                    type: and
+                  query:
+                    params: [C]
+                  reducer:
+                    type: last
+                  type: query
+{% endfor %}
+{% endfor %}

@@ -1,0 +1,34 @@
+---
+# Issue a SINGLE Let's Encrypt certificate covering every production domain
+# and subdomain (main, www, admin, api, seller, seller-api, phpmyadmin, ...).
+#
+# Domains are collected from nginx_sites, so the experimental project
+# (image_to_product) is excluded automatically — it has no nginx vhost.
+- name: "PHASE :: SSL — issue one certificate for all production domains"
+  debug:
+    msg: "========== SSL :: single cert 'colourindigo' via certbot --nginx =========="
+
+- name: Build the combined list of production SSL domains
+  set_fact:
+    all_ssl_domains: "{{ nginx_sites | map(attribute='ssl_domains') | flatten | unique }}"
+
+- name: Show domains included in the certificate
+  debug:
+    msg: "Certificate '{{ domain }}' will cover: {{ all_ssl_domains | join(', ') }}"
+
+- name: Obtain one SSL certificate for all production domains
+  command: >
+    certbot --nginx
+    {% for d in all_ssl_domains %}-d {{ d }} {% endfor %}
+    --cert-name {{ domain }}
+    --non-interactive --agree-tos --redirect --expand
+    -m {{ ssl_email }}
+  args:
+    creates: "/etc/letsencrypt/live/{{ domain }}/fullchain.pem"
+  notify: reload nginx
+
+- name: Ensure the certbot renewal timer is enabled
+  systemd:
+    name: certbot.timer
+    enabled: yes
+    state: started

@@ -1,0 +1,80 @@
+---
+# Grafana unified-alerting provisioning. Thresholds come from group_vars/all.yml.
+grafana_provisioning_dir: /etc/grafana/provisioning
+grafana_user: grafana
+alert_folder: "ColourIndigo Alerts"
+alert_contact_point: email-default
+
+# Alert rules. Each renders to a Grafana-managed rule (query refA on a datasource
+# + threshold refC). datasource = prometheus|loki (matches provisioned uids).
+grafana_alert_rules:
+  # ---- Infrastructure (resource) ----
+  - { group: Infrastructure, uid: cpu_high, title: "High CPU usage", severity: critical, datasource: prometheus, for: "5m",
+      expr: '100 - (avg(rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100)', op: gt, threshold: "{{ alert_cpu_high }}",
+      summary: "CPU usage above {{ alert_cpu_high }}%" }
+  - { group: Infrastructure, uid: mem_high, title: "High memory usage", severity: critical, datasource: prometheus, for: "5m",
+      expr: '(1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100', op: gt, threshold: "{{ alert_mem_high }}",
+      summary: "Memory usage above {{ alert_mem_high }}%" }
+  - { group: Infrastructure, uid: disk_low, title: "Low disk space (/)", severity: critical, datasource: prometheus, for: "5m",
+      expr: '(1 - (node_filesystem_avail_bytes{mountpoint="/",fstype!="tmpfs"} / node_filesystem_size_bytes{mountpoint="/",fstype!="tmpfs"})) * 100', op: gt, threshold: "{{ alert_disk_used_high }}",
+      summary: "Disk usage above {{ alert_disk_used_high }}%" }
+  - { group: Infrastructure, uid: inode_high, title: "High inode usage (/)", severity: warning, datasource: prometheus, for: "5m",
+      expr: '(1 - (node_filesystem_files_free{mountpoint="/"} / node_filesystem_files{mountpoint="/"})) * 100', op: gt, threshold: "{{ alert_inode_used_high }}",
+      summary: "Inode usage above {{ alert_inode_used_high }}%" }
+  - { group: Infrastructure, uid: load_high, title: "High load average", severity: warning, datasource: prometheus, for: "5m",
+      expr: 'node_load1', op: gt, threshold: "{{ alert_load_high }}",
+      summary: "1m load above {{ alert_load_high }}" }
+  - { group: Infrastructure, uid: swap_high, title: "Swap nearly exhausted", severity: warning, datasource: prometheus, for: "5m",
+      expr: '(1 - (node_memory_SwapFree_bytes / clamp_min(node_memory_SwapTotal_bytes, 1))) * 100', op: gt, threshold: "{{ alert_swap_used_high }}",
+      summary: "Swap usage above {{ alert_swap_used_high }}%" }
+
+  # ---- Services (crash detection) ----
+  - { group: Services, uid: process_missing, title: "Required process missing", severity: critical, datasource: prometheus, for: "2m",
+      expr: 'namedprocess_namegroup_num_procs{groupname=~"{{ process_required | join("|") }}"}', op: lt, threshold: "1",
+      summary: "A required process has 0 instances" }
+  - { group: Services, uid: systemd_restart_loop, title: "Systemd service restart loop", severity: warning, datasource: prometheus, for: "5m",
+      expr: 'changes(node_systemd_service_restart_total[10m])', op: gt, threshold: "3",
+      summary: "A monitored systemd unit restarted >3 times in 10m" }
+  - { group: Services, uid: pm2_offline, title: "PM2 process offline", severity: critical, datasource: prometheus, for: "2m",
+      expr: 'pm2_up', op: lt, threshold: "1",
+      summary: "A PM2-managed process is offline" }
+  - { group: Services, uid: pm2_restart_loop, title: "PM2 restart loop", severity: warning, datasource: prometheus, for: "5m",
+      expr: 'increase(pm2_restarts_total[15m])', op: gt, threshold: "{{ alert_pm2_restarts }}",
+      summary: "A PM2 process restarted more than {{ alert_pm2_restarts }} times in 15m" }
+
+  # ---- Websites (uptime) ----
+  - { group: Websites, uid: website_down, title: "Endpoint down (HTTP probe failed)", severity: critical, datasource: prometheus, for: "2m",
+      expr: 'probe_success', op: lt, threshold: "1",
+      summary: "An HTTP endpoint is unreachable or not returning 200" }
+  - { group: Websites, uid: website_slow, title: "Endpoint slow", severity: warning, datasource: prometheus, for: "5m",
+      expr: 'probe_duration_seconds', op: gt, threshold: "{{ alert_response_time_seconds }}",
+      summary: "HTTP probe slower than {{ alert_response_time_seconds }}s" }
+  - { group: Websites, uid: cert_expiry, title: "TLS certificate expiring soon", severity: warning, datasource: prometheus, for: "1h",
+      expr: '(probe_ssl_earliest_cert_expiry - time()) / 86400', op: lt, threshold: "{{ alert_cert_expiry_days }}",
+      summary: "TLS cert expires in under {{ alert_cert_expiry_days }} days" }
+
+  # ---- APIs ----
+  - { group: APIs, uid: api_5xx, title: "API/web 5xx errors", severity: critical, datasource: prometheus, for: "5m",
+      expr: 'sum(rate(nginx_http_response_count_total{status=~"5.."}[5m]))', op: gt, threshold: "0",
+      summary: "Nginx is returning 5xx responses" }
+
+  # ---- Databases ----
+  - { group: Databases, uid: mysql_down, title: "MySQL down", severity: critical, datasource: prometheus, for: "2m",
+      expr: 'mysql_up', op: lt, threshold: "1",
+      summary: "MySQL is unreachable (mysql_up=0)" }
+
+  # ---- Redis ----
+  - { group: Redis, uid: redis_down, title: "Redis down", severity: critical, datasource: prometheus, for: "2m",
+      expr: 'redis_up', op: lt, threshold: "1",
+      summary: "Redis is unreachable (redis_up=0)" }
+  - { group: Redis, uid: redis_mem_high, title: "Redis memory high", severity: warning, datasource: prometheus, for: "5m",
+      expr: '(redis_memory_used_bytes / clamp_min(redis_memory_max_bytes, 1)) * 100', op: gt, threshold: "{{ alert_redis_mem_high }}",
+      summary: "Redis memory above {{ alert_redis_mem_high }}% of maxmemory" }
+  - { group: Redis, uid: redis_evictions, title: "Redis evictions occurring", severity: warning, datasource: prometheus, for: "5m",
+      expr: 'increase(redis_evicted_keys_total[5m])', op: gt, threshold: "0",
+      summary: "Redis is evicting keys" }
+
+  # ---- Application Errors (Loki) ----
+  - { group: "Application Errors", uid: app_error_rate, title: "Application error spike", severity: warning, datasource: loki, for: "5m",
+      expr: 'sum(count_over_time({app=~"laravel-admin|api|seller-backend"} |~ "(?i)error|exception|fatal|critical" [5m]))', op: gt, threshold: "{{ alert_app_error_rate }}",
+      summary: "More than {{ alert_app_error_rate }} app errors in 5m" }

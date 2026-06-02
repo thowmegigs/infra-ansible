@@ -1,0 +1,88 @@
+---
+# Loki — central log store (filesystem-backed, persistent), localhost only.
+- name: "PHASE :: LOKI — install central log store"
+  debug:
+    msg: "========== LOKI :: v{{ loki_version }} on {{ loki_http_address }}:{{ loki_http_port }} | retention {{ loki_retention_period }} =========="
+
+- name: Ensure unzip is installed
+  apt:
+    name: unzip
+    state: present
+
+- name: Create loki system user
+  user:
+    name: "{{ loki_user }}"
+    system: yes
+    shell: /usr/sbin/nologin
+    create_home: no
+
+- name: Ensure loki directories exist
+  file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ loki_user }}"
+    group: "{{ loki_user }}"
+    mode: "0750"
+  loop:
+    - "{{ loki_config_dir }}"
+    - "{{ loki_data_dir }}"
+    - "{{ loki_data_dir }}/chunks"
+    - "{{ loki_data_dir }}/rules"
+    - "{{ loki_data_dir }}/compactor"
+
+- name: Download Loki
+  get_url:
+    url: "https://github.com/grafana/loki/releases/download/v{{ loki_version }}/loki-linux-{{ loki_arch }}.zip"
+    dest: "/tmp/loki-{{ loki_version }}.zip"
+    mode: "0644"
+
+- name: Extract Loki binary
+  unarchive:
+    src: "/tmp/loki-{{ loki_version }}.zip"
+    dest: /tmp
+    remote_src: yes
+
+- name: Install Loki binary
+  copy:
+    src: "/tmp/loki-linux-{{ loki_arch }}"
+    dest: "{{ loki_bin }}"
+    owner: root
+    group: root
+    mode: "0755"
+    remote_src: yes
+  notify: restart loki
+
+- name: Configure Loki
+  template:
+    src: loki-config.yml.j2
+    dest: "{{ loki_config_dir }}/loki-config.yml"
+    owner: "{{ loki_user }}"
+    group: "{{ loki_user }}"
+    mode: "0640"
+  notify: restart loki
+
+- name: Install Loki systemd unit
+  template:
+    src: loki.service.j2
+    dest: /etc/systemd/system/loki.service
+    mode: "0644"
+  notify: restart loki
+
+- name: Ensure Loki enabled and started
+  systemd:
+    name: loki
+    enabled: yes
+    state: started
+    daemon_reload: yes
+
+- name: Apply pending Loki restart now (before health check)
+  meta: flush_handlers
+
+- name: Wait for Loki to be ready
+  uri:
+    url: "http://{{ loki_http_address }}:{{ loki_http_port }}/ready"
+    status_code: 200
+  register: loki_ready
+  retries: 30
+  delay: 3
+  until: loki_ready.status is defined and loki_ready.status == 200

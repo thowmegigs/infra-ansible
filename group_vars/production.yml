@@ -1,0 +1,73 @@
+domain: colourindigo.com
+
+projects:
+
+  front:
+    repo: git@github.com:thowmegigs/colouridngofrontnextjs.git
+    path: /var/www/front
+    type: nextjs
+    port: 3000
+
+  admin:
+    repo: git@github.com:thowmegigs/colourindigolaraveladmin.git
+    path: /var/www/admin
+    type: laravel
+
+  api:
+    repo: git@github.com:thowmegigs/colourdingoexpressapi.git
+    path: /var/www/api
+    type: express
+    port: 5000
+
+  seller_front:
+    repo: git@github.com:thowmegigs/seller-frontend.git
+    path: /var/www/seller/frontend
+    type: nextjs
+    port: 3001
+
+  seller_backend:
+    repo: git@github.com:thowmegigs/seller-backend.git
+    path: /var/www/seller/backend
+    type: express
+    port: 4001
+
+  python_service:
+    repo: git@github.com:thowmegigs/python-image-service.git
+    path: /var/www/scripts
+    type: python
+    port: 5001
+experimental_projects:
+
+  image_to_product:
+
+    repo: git@github.com:thowmegigs/image_to_products.git
+
+    root: /var/www/image-to-product
+
+    access_type: ip
+
+    frontend:
+      path: frontend
+      port: 3100
+
+    backend:
+      path: backend
+      port: 4100
+
+    python:
+
+      root: scripts
+
+      venv: /home/devuser/fashion-ai
+
+      services:
+
+        image_processor:
+          script: qwen_vl_service.py
+          port: 4003
+          service_name: image-analysis-service
+
+        text_generation:
+          script: qwen_text_service.py
+          port: 4004
+          service_name: product-textinfo-generator-service

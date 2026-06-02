@@ -1,0 +1,21 @@
+# {{ ansible_managed }}
+# Reverse proxy for GlitchTip (glitchtip.<domain>). HTTP only — add SSL via
+# certbot once the domain resolves (then add it to nginx_sites/ssl).
+server {
+    listen 80;
+    listen [::]:80;
+    server_name {{ glitchtip_domain }};
+
+    access_log /var/log/nginx/glitchtip.access.log;
+    error_log  /var/log/nginx/glitchtip.error.log;
+
+    client_max_body_size 50M;
+
+    location / {
+        proxy_pass http://{{ glitchtip_listen_address }}:{{ glitchtip_listen_port }};
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}

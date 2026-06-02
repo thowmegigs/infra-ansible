@@ -1,0 +1,10 @@
+---
+# Generate the PM2 ecosystem file, start/reload Node apps, persist across reboots.
+- name: Manage Node.js apps with PM2
+  hosts: local
+  become: yes
+  vars_files:
+    - "{{ inventory_dir }}/../group_vars/all.yml"
+    - "{{ inventory_dir }}/../group_vars/production.yml"
+  roles:
+    - pm2

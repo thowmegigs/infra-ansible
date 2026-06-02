@@ -1,0 +1,99 @@
+---
+# Generate the PM2 ecosystem file and manage Node.js processes.
+- name: "PHASE :: PM2 — render ecosystem + start/reload apps"
+  debug:
+    msg: "========== PM2 :: apps = {{ pm2_apps | map(attribute='name') | join(', ') }} =========="
+
+- name: Render PM2 ecosystem file
+  template:
+    src: "{{ inventory_dir }}/../templates/ecosystem.config.js.j2"
+    dest: "{{ pm2_ecosystem_path }}"
+    mode: "0644"
+  register: ecosystem
+
+- name: Start or reload all PM2 applications
+  command: "pm2 startOrReload {{ pm2_ecosystem_path }} --update-env"
+  changed_when: true
+
+- name: Reload PM2 with refreshed environment (secret env files changed)
+  command: "pm2 reload all --update-env"
+  when: secrets_changed | default(false)
+  changed_when: true
+
+- name: Persist the PM2 process list
+  command: pm2 save
+  changed_when: true
+
+- name: Check whether PM2 boot startup is configured
+  stat:
+    path: /etc/systemd/system/pm2-root.service
+  register: pm2_startup_unit
+
+- name: Configure PM2 to start on boot
+  command: "pm2 startup systemd -u root --hp {{ pm2_home }}"
+  when: not pm2_startup_unit.stat.exists
+  changed_when: true
+
+- name: Re-save PM2 process list after enabling startup
+  command: pm2 save
+  when: not pm2_startup_unit.stat.exists
+  changed_when: true
+
+# ---------------------------------------------------------------------------
+# Log rotation for PM2 (prevents ~/.pm2/logs from filling the disk).
+# ---------------------------------------------------------------------------
+- name: Install pm2-logrotate module
+  command: pm2 install pm2-logrotate
+  args:
+    creates: "{{ pm2_home }}/.pm2/modules/pm2-logrotate"
+
+- name: Configure pm2-logrotate
+  command: "pm2 set pm2-logrotate:{{ item.key }} {{ item.value }}"
+  loop:
+    - { key: max_size, value: "{{ pm2_logrotate_max_size }}" }
+    - { key: retain, value: "{{ pm2_logrotate_retain }}" }
+    - { key: compress, value: "{{ pm2_logrotate_compress | lower }}" }
+  loop_control:
+    label: "{{ item.key }}={{ item.value }}"
+  changed_when: false
+
+# ---------------------------------------------------------------------------
+# PM2 -> Prometheus metrics via node_exporter textfile collector.
+# (Experimental image_to_product apps are filtered out.)
+# ---------------------------------------------------------------------------
+- name: Install jq (used by the PM2 metrics exporter)
+  apt:
+    name: jq
+    state: present
+
+- name: Ensure textfile collector directory exists
+  file:
+    path: "{{ pm2_textfile_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0775"
+
+- name: Install PM2 metrics exporter script
+  template:
+    src: "{{ inventory_dir }}/../templates/pm2-metrics.sh.j2"
+    dest: /usr/local/bin/pm2-metrics.sh
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Install PM2 metrics systemd service + timer
+  template:
+    src: "{{ inventory_dir }}/../templates/{{ item }}.j2"
+    dest: "/etc/systemd/system/{{ item }}"
+    mode: "0644"
+  loop:
+    - pm2-metrics.service
+    - pm2-metrics.timer
+
+- name: Enable PM2 metrics timer
+  systemd:
+    name: pm2-metrics.timer
+    enabled: yes
+    state: started
+    daemon_reload: yes

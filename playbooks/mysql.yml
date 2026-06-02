@@ -1,0 +1,11 @@
+---
+# Install MySQL server and create databases/users from variables.
+- name: Install & configure MySQL
+  hosts: local
+  become: yes
+  vars_files:
+    - "{{ inventory_dir }}/../group_vars/all.yml"
+    - "{{ inventory_dir }}/../group_vars/production.yml"
+    - "{{ inventory_dir }}/../group_vars/secrets.yml"   # DB passwords come from the vault
+  roles:
+    - mysql

@@ -1,0 +1,13 @@
+---
+loki_version: "2.9.8"
+loki_arch: amd64
+loki_user: loki
+loki_bin: /usr/local/bin/loki
+loki_config_dir: /etc/loki
+loki_data_dir: /var/lib/loki
+# Internal only — never exposed publicly. (3100 is taken by the experimental
+# frontend, so Loki uses 3100-free ports.)
+loki_http_address: "127.0.0.1"
+loki_http_port: 3310
+loki_grpc_port: 9096
+loki_retention_period: "168h"   # 7 days

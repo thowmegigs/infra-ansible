@@ -1,0 +1,15 @@
+# {{ ansible_managed }}
+[Unit]
+Description=Loki log aggregation service
+After=network.target
+
+[Service]
+Type=simple
+User={{ loki_user }}
+Group={{ loki_user }}
+ExecStart={{ loki_bin }} -config.file={{ loki_config_dir }}/loki-config.yml
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

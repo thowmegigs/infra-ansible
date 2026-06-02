@@ -1,0 +1,7 @@
+---
+nginxlog_exporter_version: "1.11.0"
+nginxlog_exporter_arch: amd64
+nginxlog_exporter_bin: /usr/local/bin/prometheus-nginxlog-exporter
+nginxlog_exporter_config_dir: /etc/nginx_exporter
+nginxlog_exporter_port: 4040
+nginx_log_dir: /var/log/nginx

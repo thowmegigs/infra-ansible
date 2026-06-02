@@ -1,0 +1,17 @@
+# {{ ansible_managed }}
+[Unit]
+Description=Prometheus Redis Exporter
+After=network.target redis-server.service
+
+[Service]
+Type=simple
+User={{ redis_exporter_user }}
+Group={{ redis_exporter_user }}
+ExecStart={{ redis_exporter_bin }} \
+  --redis.addr={{ redis_exporter_addr }} \
+  --web.listen-address=127.0.0.1:{{ redis_exporter_port }}
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

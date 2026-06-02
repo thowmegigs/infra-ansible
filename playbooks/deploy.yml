@@ -1,0 +1,11 @@
+---
+# Clone/pull all repositories, build apps, and configure python systemd units.
+- name: Deploy application code & python services
+  hosts: local
+  become: yes
+  vars_files:
+    - "{{ inventory_dir }}/../group_vars/all.yml"
+    - "{{ inventory_dir }}/../group_vars/production.yml"
+  roles:
+    - deploy
+    - python

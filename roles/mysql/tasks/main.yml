@@ -1,0 +1,83 @@
+---
+# Install MySQL server and create databases/users idempotently.
+- name: "PHASE :: MYSQL — install server, create DBs/users, optional seed import"
+  debug:
+    msg: "========== MYSQL :: databases={{ mysql_databases | map(attribute='name') | join(', ') }} | users={{ mysql_users | map(attribute='name') | join(', ') }} =========="
+
+- name: Install MySQL server
+  apt:
+    name: mysql-server
+    state: present
+    update_cache: yes
+
+- name: Install PyMySQL (required by community.mysql modules)
+  apt:
+    name: python3-pymysql
+    state: present
+
+- name: Ensure MySQL is enabled and started
+  service:
+    name: mysql
+    state: started
+    enabled: yes
+
+- name: Create application databases
+  community.mysql.mysql_db:
+    name: "{{ item.name }}"
+    state: present
+    login_unix_socket: /run/mysqld/mysqld.sock
+  loop: "{{ mysql_databases }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Create application database users
+  community.mysql.mysql_user:
+    name: "{{ item.name }}"
+    password: "{{ item.password }}"
+    priv: "{{ item.priv }}"
+    host: "{{ item.host | default('localhost') }}"
+    state: present
+    login_unix_socket: /run/mysqld/mysqld.sock
+  loop: "{{ mysql_users }}"
+  loop_control:
+    label: "{{ item.name }}"
+  no_log: true
+
+# ---------------------------------------------------------------------------
+# One-time seed: import an existing .sql dump into mysql_import_db, but only
+# when that database is still empty (so re-runs never overwrite live data).
+# ---------------------------------------------------------------------------
+- name: Check for the SQL seed dump
+  stat:
+    path: "{{ mysql_import_file }}"
+  register: seed_dump
+  when: mysql_import_file | length > 0
+
+- name: Count existing tables in {{ mysql_import_db }}
+  community.mysql.mysql_query:
+    login_db: "{{ mysql_import_db }}"
+    query: "SHOW TABLES"
+    login_unix_socket: /run/mysqld/mysqld.sock
+  register: seed_tables
+  when:
+    - mysql_import_file | length > 0
+    - seed_dump.stat.exists
+
+- name: Report seed-import decision
+  debug:
+    msg: >-
+      {% if mysql_import_file | length == 0 %}No seed file configured (mysql_import_file empty) — skipping import.
+      {% elif not seed_dump.stat.exists %}Seed file '{{ mysql_import_file }}' NOT found on VPS — skipping import.
+      {% elif seed_tables.rowcount[0] | int > 0 %}Database '{{ mysql_import_db }}' already has {{ seed_tables.rowcount[0] }} table(s) — skipping import (data preserved).
+      {% else %}Database '{{ mysql_import_db }}' is empty — importing '{{ mysql_import_file }}'.{% endif %}
+
+- name: Import SQL dump into {{ mysql_import_db }} (only when empty)
+  community.mysql.mysql_db:
+    name: "{{ mysql_import_db }}"
+    state: import
+    target: "{{ mysql_import_file }}"
+    login_unix_socket: /run/mysqld/mysqld.sock
+  when:
+    - mysql_import_file | length > 0
+    - seed_dump.stat.exists
+    - seed_tables.rowcount[0] | int == 0

@@ -1,0 +1,7 @@
+---
+grafana_user: grafana
+grafana_provisioning_dir: /etc/grafana/provisioning
+grafana_dashboards_dir: /var/lib/grafana/dashboards
+grafana_admin_user: admin
+# Password comes from the vault (vault_grafana_admin_password) via monitoring.yml.
+grafana_admin_password: "{{ vault_grafana_admin_password | default('admin') }}"

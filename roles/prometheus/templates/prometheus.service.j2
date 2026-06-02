@@ -1,0 +1,19 @@
+# {{ ansible_managed }}
+[Unit]
+Description=Prometheus
+After=network.target
+
+[Service]
+Type=simple
+User={{ prometheus_user }}
+Group={{ prometheus_user }}
+ExecStart={{ prometheus_bin_dir }}/prometheus \
+  --config.file={{ prometheus_config_dir }}/prometheus.yml \
+  --storage.tsdb.path={{ prometheus_data_dir }} \
+  --storage.tsdb.retention.time={{ prometheus_retention }} \
+  --web.listen-address={{ prometheus_listen_address }}
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,13 @@
+# {{ ansible_managed }}
+{% for path in logrotate_app_paths %}
+{{ path }}
+{% endfor %}
+{
+    daily
+    rotate {{ app_log_rotate_days }}
+    missingok
+    notifempty
+    compress
+    delaycompress
+    copytruncate
+}

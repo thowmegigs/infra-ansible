@@ -1,0 +1,64 @@
+{
+  "uid": "pm2-apps",
+  "title": "2 - PM2 Applications",
+  "tags": ["colourindigo", "pm2"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": { "from": "now-6h", "to": "now" },
+  "panels": [
+    {
+      "id": 1, "type": "stat", "title": "Process status (1 = online)",
+      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "mappings": [ { "type": "value", "options": { "0": { "text": "OFFLINE", "color": "red" }, "1": { "text": "online", "color": "green" } } } ], "thresholds": { "mode": "absolute", "steps": [ { "color": "red", "value": null }, { "color": "green", "value": 1 } ] } }, "overrides": [] },
+      "options": { "colorMode": "background", "graphMode": "none" },
+      "targets": [ { "refId": "A", "expr": "pm2_up", "legendFormat": "{{name}}", "instant": true } ]
+    },
+    {
+      "id": 2, "type": "stat", "title": "Restart loops (>5 restarts)",
+      "gridPos": { "h": 7, "w": 12, "x": 12, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "red", "value": 6 } ] } }, "overrides": [] },
+      "targets": [ { "refId": "A", "expr": "pm2_restarts_total", "legendFormat": "{{name}}", "instant": true } ]
+    },
+    {
+      "id": 3, "type": "timeseries", "title": "Memory per app",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 7 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "bytes" }, "overrides": [] },
+      "targets": [ { "refId": "A", "expr": "pm2_memory_bytes", "legendFormat": "{{name}}" } ]
+    },
+    {
+      "id": 4, "type": "timeseries", "title": "CPU per app",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 7 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "percent" }, "overrides": [] },
+      "targets": [ { "refId": "A", "expr": "pm2_cpu_percent", "legendFormat": "{{name}}" } ]
+    },
+    {
+      "id": 5, "type": "timeseries", "title": "Restarts over time",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 15 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "refId": "A", "expr": "pm2_restarts_total", "legendFormat": "{{name}} restarts" },
+        { "refId": "B", "expr": "pm2_unstable_restarts_total", "legendFormat": "{{name}} crash-loops" }
+      ]
+    },
+    {
+      "id": 6, "type": "timeseries", "title": "Uptime",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 15 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+      "targets": [ { "refId": "A", "expr": "pm2_uptime_seconds", "legendFormat": "{{name}}" } ]
+    },
+    {
+      "id": 7, "type": "logs", "title": "PM2 logs (crashes / restarts)",
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 23 },
+      "datasource": { "type": "loki", "uid": "loki" },
+      "options": { "showTime": true, "wrapLogMessage": true, "sortOrder": "Descending" },
+      "targets": [ { "refId": "A", "expr": "{app=\"pm2\"} |~ \"(?i)error|crash|exited|restart|reload\"" } ]
+    }
+  ]
+}

@@ -1,0 +1,39 @@
+; {{ ansible_managed }}
+[server]
+http_addr = {{ grafana_http_address }}
+http_port = {{ grafana_http_port }}
+{% if grafana_expose_via_nginx | default(false) %}
+domain = {{ grafana_domain }}
+root_url = %(protocol)s://%(domain)s/
+{% endif %}
+
+[security]
+admin_user = {{ grafana_admin_user }}
+admin_password = {{ grafana_admin_password }}
+cookie_secure = false
+
+[users]
+allow_sign_up = false
+
+[auth.anonymous]
+enabled = false
+
+[analytics]
+reporting_enabled = false
+check_for_updates = false
+
+{% if alerting_email_enabled | default(false) %}
+[smtp]
+enabled = true
+host = {{ alert_smtp_host }}:{{ alert_smtp_port }}
+user = {{ alert_smtp_user }}
+password = {{ vault_alert_smtp_password | default('') }}
+from_address = {{ alert_smtp_from_address }}
+from_name = {{ alert_smtp_from_name }}
+startTLS_policy = OpportunisticStartTLS
+skip_verify = false
+
+{% endif %}
+[log]
+mode = console file
+level = info

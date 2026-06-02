@@ -1,0 +1,25 @@
+---
+# Disaster-recovery helper: dump databases and archive web roots.
+- name: "PHASE :: BACKUP — dump databases + archive web roots"
+  debug:
+    msg: "========== BACKUP :: target dir {{ backup_dir }} =========="
+
+- name: Ensure backup directory exists
+  file:
+    path: "{{ backup_dir }}"
+    state: directory
+    mode: "0750"
+
+- name: Dump MySQL databases
+  shell: "mysqldump --single-transaction --databases {{ item.name }} > {{ backup_dir }}/{{ item.name }}-{{ ansible_date_time.date }}.sql"
+  args:
+    creates: "{{ backup_dir }}/{{ item.name }}-{{ ansible_date_time.date }}.sql"
+  loop: "{{ mysql_databases }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Archive web roots
+  archive:
+    path: "{{ www_root }}"
+    dest: "{{ backup_dir }}/www-{{ ansible_date_time.date }}.tar.gz"
+    format: gz

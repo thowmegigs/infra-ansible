@@ -1,0 +1,11 @@
+---
+prometheus_version: "2.53.2"
+prometheus_arch: amd64
+prometheus_user: prometheus
+prometheus_bin_dir: /usr/local/bin
+prometheus_config_dir: /etc/prometheus
+prometheus_data_dir: /var/lib/prometheus
+# Internal only.
+prometheus_listen_address: "127.0.0.1:9090"
+prometheus_retention: "15d"
+# Scrape targets come from prometheus_jobs (group_vars/all.yml).

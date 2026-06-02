@@ -1,0 +1,56 @@
+---
+# Prometheus Node Exporter — host metrics (CPU/RAM/disk/fs/network), localhost only.
+- name: "PHASE :: NODE_EXPORTER — install host metrics exporter"
+  debug:
+    msg: "========== NODE_EXPORTER :: v{{ node_exporter_version }} on {{ node_exporter_listen_address }} (internal only) =========="
+
+- name: Create node_exporter system user
+  user:
+    name: "{{ node_exporter_user }}"
+    system: yes
+    shell: /usr/sbin/nologin
+    create_home: no
+
+- name: Ensure textfile collector directory exists (PM2 metrics)
+  file:
+    path: "{{ pm2_textfile_dir }}"
+    state: directory
+    owner: "{{ node_exporter_user }}"
+    group: "{{ node_exporter_user }}"
+    mode: "0775"
+
+- name: Download Node Exporter
+  get_url:
+    url: "https://github.com/prometheus/node_exporter/releases/download/v{{ node_exporter_version }}/node_exporter-{{ node_exporter_version }}.linux-{{ node_exporter_arch }}.tar.gz"
+    dest: "/tmp/node_exporter-{{ node_exporter_version }}.tar.gz"
+    mode: "0644"
+
+- name: Extract Node Exporter
+  unarchive:
+    src: "/tmp/node_exporter-{{ node_exporter_version }}.tar.gz"
+    dest: /tmp
+    remote_src: yes
+
+- name: Install Node Exporter binary
+  copy:
+    src: "/tmp/node_exporter-{{ node_exporter_version }}.linux-{{ node_exporter_arch }}/node_exporter"
+    dest: "{{ node_exporter_bin }}"
+    owner: root
+    group: root
+    mode: "0755"
+    remote_src: yes
+  notify: restart node_exporter
+
+- name: Install Node Exporter systemd unit
+  template:
+    src: node_exporter.service.j2
+    dest: /etc/systemd/system/node_exporter.service
+    mode: "0644"
+  notify: restart node_exporter
+
+- name: Ensure Node Exporter enabled and started
+  systemd:
+    name: node_exporter
+    enabled: yes
+    state: started
+    daemon_reload: yes

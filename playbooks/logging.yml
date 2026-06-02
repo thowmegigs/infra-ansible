@@ -1,0 +1,13 @@
+---
+# Centralized logging: Loki (storage) + Promtail (collection) + log rotation.
+# Production sources only — the experimental image_to_product project is excluded.
+- name: Install logging stack (Loki + Promtail + logrotate)
+  hosts: local
+  become: yes
+  vars_files:
+    - "{{ inventory_dir }}/../group_vars/all.yml"
+    - "{{ inventory_dir }}/../group_vars/production.yml"
+  roles:
+    - loki
+    - promtail
+    - logrotate

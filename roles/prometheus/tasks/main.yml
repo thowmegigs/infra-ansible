@@ -1,0 +1,71 @@
+---
+# Prometheus — lightweight metrics store that scrapes Node Exporter, localhost only.
+- name: "PHASE :: PROMETHEUS — install metrics store"
+  debug:
+    msg: "========== PROMETHEUS :: v{{ prometheus_version }} on {{ prometheus_listen_address }} | retention {{ prometheus_retention }} =========="
+
+- name: Create prometheus system user
+  user:
+    name: "{{ prometheus_user }}"
+    system: yes
+    shell: /usr/sbin/nologin
+    create_home: no
+
+- name: Ensure prometheus directories exist
+  file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ prometheus_user }}"
+    group: "{{ prometheus_user }}"
+    mode: "0750"
+  loop:
+    - "{{ prometheus_config_dir }}"
+    - "{{ prometheus_data_dir }}"
+
+- name: Download Prometheus
+  get_url:
+    url: "https://github.com/prometheus/prometheus/releases/download/v{{ prometheus_version }}/prometheus-{{ prometheus_version }}.linux-{{ prometheus_arch }}.tar.gz"
+    dest: "/tmp/prometheus-{{ prometheus_version }}.tar.gz"
+    mode: "0644"
+
+- name: Extract Prometheus
+  unarchive:
+    src: "/tmp/prometheus-{{ prometheus_version }}.tar.gz"
+    dest: /tmp
+    remote_src: yes
+
+- name: Install Prometheus binaries
+  copy:
+    src: "/tmp/prometheus-{{ prometheus_version }}.linux-{{ prometheus_arch }}/{{ item }}"
+    dest: "{{ prometheus_bin_dir }}/{{ item }}"
+    owner: root
+    group: root
+    mode: "0755"
+    remote_src: yes
+  loop:
+    - prometheus
+    - promtool
+  notify: restart prometheus
+
+- name: Configure Prometheus
+  template:
+    src: prometheus.yml.j2
+    dest: "{{ prometheus_config_dir }}/prometheus.yml"
+    owner: "{{ prometheus_user }}"
+    group: "{{ prometheus_user }}"
+    mode: "0640"
+  notify: restart prometheus
+
+- name: Install Prometheus systemd unit
+  template:
+    src: prometheus.service.j2
+    dest: /etc/systemd/system/prometheus.service
+    mode: "0644"
+  notify: restart prometheus
+
+- name: Ensure Prometheus enabled and started
+  systemd:
+    name: prometheus
+    enabled: yes
+    state: started
+    daemon_reload: yes

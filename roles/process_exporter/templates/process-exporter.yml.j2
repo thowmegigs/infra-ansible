@@ -1,0 +1,17 @@
+# {{ ansible_managed }}
+process_names:
+{% for grp in process_groups %}
+  - name: "{{ grp.name }}"
+{% if grp.comm is defined %}
+    comm:
+{% for c in grp.comm %}
+      - {{ c }}
+{% endfor %}
+{% endif %}
+{% if grp.cmdline is defined %}
+    cmdline:
+{% for c in grp.cmdline %}
+      - "{{ c }}"
+{% endfor %}
+{% endif %}
+{% endfor %}

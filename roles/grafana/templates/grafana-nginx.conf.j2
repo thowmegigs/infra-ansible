@@ -1,0 +1,28 @@
+# {{ ansible_managed }}
+# Reverse proxy for Grafana (logs.<domain>). HTTP only — add SSL via certbot
+# once the domain resolves (then add the domain to nginx_sites/ssl).
+server {
+    listen 80;
+    listen [::]:80;
+    server_name {{ grafana_domain }};
+
+    access_log /var/log/nginx/grafana.access.log;
+    error_log  /var/log/nginx/grafana.error.log;
+
+    location / {
+        proxy_pass http://{{ grafana_http_address }}:{{ grafana_http_port }};
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # Grafana Live (websocket)
+    location /api/live/ {
+        proxy_pass http://{{ grafana_http_address }}:{{ grafana_http_port }};
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+    }
+}
