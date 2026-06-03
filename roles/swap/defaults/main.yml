@@ -1,0 +1,6 @@
+---
+swap_enabled: true
+swap_file: /swapfile
+swap_swappiness: 10                 # only swap under real memory pressure
+# 8 GB when the heavy Qwen AI services run, otherwise 4 GB.
+swap_size: "{{ '8G' if (python_ai_services_enabled | default(false)) else '4G' }}"

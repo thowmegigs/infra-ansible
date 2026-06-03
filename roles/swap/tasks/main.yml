@@ -1,0 +1,93 @@
+---
+# Idempotent swapfile management. Size tracks python_ai_services_enabled
+# (8G when AI services run, else 4G) and is resized in place if it changes.
+- name: "PHASE :: SWAP — configure swapfile"
+  debug:
+    msg: "========== SWAP :: enabled={{ swap_enabled }} | size={{ swap_size }} | swappiness={{ swap_swappiness }} | AI services={{ python_ai_services_enabled | default(false) }} =========="
+
+- name: Configure swap
+  when: swap_enabled | default(true)
+  block:
+    - name: Compute desired swap size in bytes
+      set_fact:
+        swap_bytes: "{{ ((swap_size | regex_replace('[^0-9]', '') | int) * ((1024 ** 3) if (swap_size[-1] | lower == 'g') else (1024 ** 2))) | int }}"
+
+    - name: Stat existing swapfile
+      stat:
+        path: "{{ swap_file }}"
+      register: swap_stat
+
+    - name: Decide whether to (re)create the swapfile
+      set_fact:
+        swap_recreate: "{{ (not swap_stat.stat.exists) or ((swap_stat.stat.size | int) != (swap_bytes | int)) }}"
+
+    - name: Disable current swapfile before resize
+      command: "swapoff {{ swap_file }}"
+      when: swap_recreate and swap_stat.stat.exists
+      failed_when: false
+      changed_when: true
+
+    - name: Remove old swapfile (size change)
+      file:
+        path: "{{ swap_file }}"
+        state: absent
+      when: swap_recreate
+
+    - name: "Allocate swapfile ({{ swap_size }})"
+      command: "fallocate -l {{ swap_size }} {{ swap_file }}"
+      when: swap_recreate
+
+    - name: Secure swapfile permissions (root, 0600)
+      file:
+        path: "{{ swap_file }}"
+        owner: root
+        group: root
+        mode: "0600"
+
+    - name: Format swapfile
+      command: "mkswap {{ swap_file }}"
+      when: swap_recreate
+
+    - name: Check which swaps are active
+      command: swapon --show=NAME --noheadings
+      register: swap_active
+      changed_when: false
+
+    - name: Enable swapfile
+      command: "swapon {{ swap_file }}"
+      when: swap_file not in (swap_active.stdout | default(''))
+      changed_when: true
+
+    - name: Persist swap in /etc/fstab
+      lineinfile:
+        path: /etc/fstab
+        regexp: "^[#\\s]*{{ swap_file | regex_escape }}\\s"
+        line: "{{ swap_file }} none swap sw 0 0"
+        state: present
+
+    - name: Set vm.swappiness
+      ansible.posix.sysctl:
+        name: vm.swappiness
+        value: "{{ swap_swappiness | string }}"
+        state: present
+        sysctl_set: yes
+        reload: yes
+
+- name: Disable swap (swap_enabled=false)
+  when: not (swap_enabled | default(true))
+  block:
+    - name: Turn off swapfile
+      command: "swapoff {{ swap_file }}"
+      failed_when: false
+      changed_when: true
+
+    - name: Remove swap entry from /etc/fstab
+      lineinfile:
+        path: /etc/fstab
+        regexp: "^[#\\s]*{{ swap_file | regex_escape }}\\s"
+        state: absent
+
+    - name: Remove swapfile
+      file:
+        path: "{{ swap_file }}"
+        state: absent

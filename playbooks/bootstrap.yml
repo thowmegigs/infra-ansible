@@ -8,5 +8,6 @@
     - "{{ inventory_dir }}/../group_vars/production.yml"
   roles:
     - common
+    - swap
     - node
     - php
