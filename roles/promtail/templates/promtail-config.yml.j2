@@ -23,23 +23,44 @@ scrape_configs:
           __path__: {{ src.path }}
 {% endfor %}
 
-  # ---- nginx (access + error) ----
+  # ---- nginx per-site access + error (labelled by vhost) ----
   - job_name: nginx
     static_configs:
+{% for s in nginx_sites %}
       - targets: [localhost]
         labels:
           job: nginx
           app: nginx
+          vhost: {{ s.name }}
           stream: access
           host: {{ ansible_hostname }}
-          __path__: {{ nginx_log_dir }}/*access.log
+          __path__: {{ nginx_log_dir }}/{{ s.name }}.access.log
       - targets: [localhost]
         labels:
           job: nginx
           app: nginx
+          vhost: {{ s.name }}
           stream: error
           host: {{ ansible_hostname }}
-          __path__: {{ nginx_log_dir }}/*error.log
+          __path__: {{ nginx_log_dir }}/{{ s.name }}.error.log
+{% endfor %}
+      # global nginx logs (anything not matched by a vhost)
+      - targets: [localhost]
+        labels:
+          job: nginx
+          app: nginx
+          vhost: _global
+          stream: access
+          host: {{ ansible_hostname }}
+          __path__: {{ nginx_log_dir }}/access.log
+      - targets: [localhost]
+        labels:
+          job: nginx
+          app: nginx
+          vhost: _global
+          stream: error
+          host: {{ ansible_hostname }}
+          __path__: {{ nginx_log_dir }}/error.log
 
 # NOTE: the experimental image_to_product project (incl. its python systemd
 # services) is intentionally NOT collected here.
