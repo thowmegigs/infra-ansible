@@ -78,11 +78,32 @@
         recurse: yes
       when: up_contents.matched | int > 0
 
-    - name: "[uploads] Back up original directory -> {{ uploads_dest }}.bak-<timestamp>"
+    # Keep only ONE backup. If a repo keeps re-committing uploads/, later runs
+    # just remove the re-created dir (its files are already in shared) instead
+    # of piling up endless .bak-* folders.
+    - name: "[uploads] Look for an existing backup of {{ uploads_dest }}"
+      find:
+        paths: "{{ uploads_dest | dirname }}"
+        patterns: "{{ uploads_dest | basename }}.bak-*"
+        file_type: directory
+      register: up_existing_backup
+      when: up_contents.matched | int > 0
+
+    - name: "[uploads] Back up original (first time only) -> {{ uploads_dest }}.bak-<timestamp>"
       command: "mv {{ uploads_dest }} {{ uploads_dest }}.bak-{{ ansible_date_time.iso8601_basic_short }}"
       register: up_backup
       failed_when: up_backup.rc != 0
-      when: up_contents.matched | int > 0
+      when:
+        - up_contents.matched | int > 0
+        - (up_existing_backup.matched | default(0) | int) == 0
+
+    - name: "[uploads] Already backed up before — remove the re-created dir (files are in shared)"
+      file:
+        path: "{{ uploads_dest }}"
+        state: absent
+      when:
+        - up_contents.matched | int > 0
+        - (up_existing_backup.matched | default(0) | int) > 0
 
     # ---- empty: just remove it (nothing to preserve) ----
     - name: "[uploads] Remove empty directory {{ uploads_dest }}"

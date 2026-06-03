@@ -329,6 +329,7 @@ pm2_apps:
     cwd: "{{ projects.api.path }}"
     port: "{{ projects.api.port }}"
     env_file: "{{ secrets_dir }}/api.env"
+    start_cmd: "node dist/index.js"     # compiled TypeScript entry point
 
   - name: seller_front
     cwd: "{{ projects.seller_front.path }}"
@@ -339,6 +340,7 @@ pm2_apps:
     cwd: "{{ projects.seller_backend.path }}"
     port: "{{ projects.seller_backend.port }}"
     env_file: "{{ secrets_dir }}/seller-backend.env"
+    start_cmd: "node dist/index.js"     # compiled TypeScript entry point
 
   - name: image_to_product_front
     cwd: "{{ experimental_projects.image_to_product.root }}/{{ experimental_projects.image_to_product.frontend.path }}"
