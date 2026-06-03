@@ -18,6 +18,7 @@
 #  11. logging    — Loki + Promtail (central log aggregation)
 #  12. monitoring — exporters + Prometheus + Grafana + crash/uptime alerting
 #  13. glitchtip  — self-hosted application error reporting (Docker)
+#  14. healthcheck — verify ports + /health endpoints + firewall (aborts if down)
 # ===========================================================================
 - import_playbook: playbooks/bootstrap.yml
 - import_playbook: playbooks/secrets.yml
@@ -32,3 +33,4 @@
 - import_playbook: playbooks/logging.yml
 - import_playbook: playbooks/monitoring.yml
 - import_playbook: playbooks/glitchtip.yml
+- import_playbook: playbooks/healthcheck.yml

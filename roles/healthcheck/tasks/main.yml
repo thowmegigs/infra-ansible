@@ -1,0 +1,85 @@
+---
+# Verify every production app: port listening + /health response + firewall.
+- name: "PHASE :: HEALTHCHECK — verify ports, /health endpoints, firewall"
+  debug:
+    msg: "========== HEALTHCHECK :: {{ healthcheck_apps | length }} app(s) =========="
+
+# --- 1. Is the port actually listening? ------------------------------------
+- name: "[hc] Port listening checks (127.0.0.1:<port>)"
+  wait_for:
+    host: 127.0.0.1
+    port: "{{ item.port }}"
+    timeout: "{{ healthcheck_port_timeout }}"
+    state: started
+  loop: "{{ healthcheck_apps }}"
+  loop_control:
+    label: "{{ item.name }}:{{ item.port }}"
+  register: hc_ports
+  ignore_errors: true
+
+# --- 2. Does the /health (or /) endpoint respond healthy? ------------------
+- name: "[hc] HTTP health checks"
+  uri:
+    url: "{{ item.url }}"
+    method: GET
+    status_code: "{{ item.expected_status | default(200) }}"
+    timeout: "{{ healthcheck_http_timeout }}"
+    follow_redirects: all
+    validate_certs: false
+  loop: "{{ healthcheck_apps }}"
+  loop_control:
+    label: "{{ item.name }} {{ item.url | default('(no url)') }}"
+  register: hc_http
+  when: item.url is defined
+  ignore_errors: true
+
+# --- 3. Firewall (ufw) state for public ports ------------------------------
+- name: "[hc] Read firewall (ufw) status"
+  command: ufw status
+  register: hc_ufw
+  changed_when: false
+  failed_when: false
+
+# --- Build the list of down apps -------------------------------------------
+- name: "[hc] Compute down apps"
+  set_fact:
+    hc_down: "{{ (
+        (hc_ports.results | selectattr('failed', 'defined') | selectattr('failed') | map(attribute='item.name') | list)
+        + (hc_http.results  | selectattr('failed', 'defined') | selectattr('failed') | map(attribute='item.name') | list)
+      ) | unique }}"
+
+# --- Report -----------------------------------------------------------------
+- name: "[hc] Health report"
+  debug:
+    msg: |-
+      =================== HEALTH CHECK ===================
+      {% for r in hc_ports.results %}
+      {{ "%-16s" | format(r.item.name) }} :{{ r.item.port }}  {{ 'UP  — listening' if not (r.failed | default(false)) else 'DOWN — nothing listening (not started / crashed / wrong port)' }}
+      {% endfor %}
+      ------------------ /health endpoints ----------------
+      {% for r in hc_http.results %}
+      {% if not (r.skipped | default(false)) %}
+      {{ "%-16s" | format(r.item.name) }} {{ r.item.url }} -> {{ r.status | default('NO RESPONSE') }} {{ '(OK)' if (r.status | default(0)) == (r.item.expected_status | default(200)) else '(FAIL)' }}
+      {% endif %}
+      {% endfor %}
+      --------------------- firewall (ufw) ----------------
+      ufw: {{ 'ACTIVE' if ('Status: active' in hc_ufw.stdout) else 'inactive — no port filtering' }}
+      {% if 'Status: active' in hc_ufw.stdout %}
+      {% for p in healthcheck_public_ports %}
+      public port {{ p }}: {{ 'ALLOWED' if ((p | string) in hc_ufw.stdout) else 'NOT ALLOWED — public access may be blocked!' }}
+      {% endfor %}
+      {% endif %}
+      NOTE: app ports (e.g. 5000/4001) are localhost-only behind nginx and do NOT
+      need firewall rules — only 22/80/443 must be open publicly.
+      ====================================================
+
+# --- Abort if anything is down ---------------------------------------------
+- name: "[hc] FAIL — one or more apps are down"
+  fail:
+    msg: >-
+      HEALTH CHECK FAILED. Down/unhealthy: {{ hc_down | join(', ') }}.
+      Fix with `pm2 logs <app> --lines 50 --nostream` (check the app started and
+      binds the expected port / its /health route returns 200), then re-run.
+  when:
+    - healthcheck_fail_on_down | default(true)
+    - (hc_down | length) > 0

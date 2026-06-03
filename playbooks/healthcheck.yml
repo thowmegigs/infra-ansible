@@ -1,0 +1,12 @@
+---
+# Post-deploy verification: port listening + /health endpoints + firewall.
+# Runs last; aborts with a clear list if any production app is down
+# (set healthcheck_fail_on_down: false to report-only).
+- name: Post-deploy health checks
+  hosts: local
+  become: yes
+  vars_files:
+    - "{{ inventory_dir }}/../group_vars/all.yml"
+    - "{{ inventory_dir }}/../group_vars/production.yml"
+  roles:
+    - healthcheck

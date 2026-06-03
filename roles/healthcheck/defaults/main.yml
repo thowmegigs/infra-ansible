@@ -1,0 +1,17 @@
+---
+# Post-deploy verification. Runs last (after pm2/nginx/ssl).
+healthcheck_port_timeout: 10        # seconds to wait for each port to listen
+healthcheck_http_timeout: 10        # seconds per /health request
+healthcheck_fail_on_down: true      # abort the run (with a clear list) if any app is down
+
+# Apps to verify. Backends expose /health; Next.js frontends are checked on "/".
+# Each: name, port, url (optional), expected_status (default 200).
+healthcheck_apps:
+  - { name: front,          port: "{{ projects.front.port }}",          url: "http://127.0.0.1:{{ projects.front.port }}/" }
+  - { name: api,            port: "{{ projects.api.port }}",            url: "http://127.0.0.1:{{ projects.api.port }}/health" }
+  - { name: seller_front,   port: "{{ projects.seller_front.port }}",   url: "http://127.0.0.1:{{ projects.seller_front.port }}/" }
+  - { name: seller_backend, port: "{{ projects.seller_backend.port }}", url: "http://127.0.0.1:{{ projects.seller_backend.port }}/health" }
+
+# Public ports that SHOULD be open in the firewall. App ports (5000/4001/…) are
+# localhost-only behind nginx and must NOT be public; only these need to be open.
+healthcheck_public_ports: [22, 80, 443]
