@@ -66,6 +66,13 @@
   changed_when: false
   failed_when: false
 
+# --- 5b. PM2 daemon alive? (pm2-root.service only goes active on reboot) -----
+- name: "[hc] PM2 daemon ping"
+  command: pm2 ping
+  register: hc_pm2
+  changed_when: false
+  failed_when: false
+
 # --- 6. Firewall (ufw) state ------------------------------------------------
 - name: "[hc] Read firewall (ufw) status"
   command: ufw status
@@ -83,10 +90,13 @@
     hc_down_services: "{{ hc_svc.results | rejectattr('stdout', 'equalto', 'active') | map(attribute='item') | list }}"
     hc_down_endpoints: "{{ hc_endpoints.results | selectattr('failed', 'defined') | selectattr('failed') | map(attribute='item.name') | list }}"
     hc_redis_ok: "{{ (hc_redis.stdout | default('') | trim) == 'PONG' }}"
+    hc_pm2_ok: "{{ hc_pm2.rc | default(1) == 0 }}"
 
 - name: "[hc] Combine all failures"
   set_fact:
-    hc_all_down: "{{ (hc_down_apps + hc_down_services + hc_down_endpoints + ([] if hc_redis_ok else ['redis:ping'])) | unique }}"
+    hc_all_down: "{{ (hc_down_apps + hc_down_services + hc_down_endpoints
+                      + ([] if hc_redis_ok else ['redis:ping'])
+                      + ([] if hc_pm2_ok else ['pm2:daemon'])) | unique }}"
 
 # --- Report -----------------------------------------------------------------
 - name: "[hc] Report — applications"
@@ -111,6 +121,7 @@
       {{ "%-18s" | format(r.item) }} {{ 'ACTIVE' if (r.stdout == 'active') else 'NOT RUNNING (' + (r.stdout | default('unknown')) + ')' }}
       {% endfor %}
       redis-cli ping     {{ 'PONG (OK)' if hc_redis_ok else 'NO PONG (FAIL)' }}
+      pm2 daemon         {{ 'ALIVE (OK)' if hc_pm2_ok else 'NOT RESPONDING (FAIL)' }}
       ------------------ health endpoints ---------------
       {% for r in hc_endpoints.results %}
       {{ "%-18s" | format(r.item.name) }} {{ r.item.url }} -> {{ r.status | default('NO RESPONSE') }} {{ '(OK)' if (r.status | default(0)) == (r.item.expected_status | default(200)) else '(FAIL)' }}

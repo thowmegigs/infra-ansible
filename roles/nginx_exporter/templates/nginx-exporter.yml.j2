@@ -5,13 +5,12 @@ listen:
 
 namespaces:
   - name: nginx
-    format: "{{ nginx_monitoring_log_format }}"
+    # single-quoted: the format contains double quotes ($request etc.)
+    format: '{{ nginx_monitoring_log_format }}'
     source:
       files:
-        - {{ nginx_log_dir }}/front.access.log
-        - {{ nginx_log_dir }}/admin.access.log
-        - {{ nginx_log_dir }}/api.access.log
-        - {{ nginx_log_dir }}/seller_front.access.log
-        - {{ nginx_log_dir }}/seller_backend.access.log
+{% for s in nginx_sites %}
+        - {{ nginx_log_dir }}/{{ s.name }}.access.log
+{% endfor %}
     labels:
       service: nginx

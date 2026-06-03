@@ -33,7 +33,8 @@ healthcheck_services:
   - nginx_exporter
   - process_exporter
   - blackbox_exporter
-  - pm2-root
+  # NOTE: pm2-root.service is only "active" after a reboot (it just runs
+  # `pm2 resurrect`). The live PM2 daemon is verified separately via `pm2 ping`.
 
 # Infra HTTP health endpoints (localhost). Ports come from group_vars/all.yml.
 healthcheck_endpoints:

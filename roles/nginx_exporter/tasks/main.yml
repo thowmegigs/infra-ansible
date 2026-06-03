@@ -44,6 +44,18 @@
     mode: "0644"
   notify: restart nginx_exporter
 
+- name: Ensure nginx access logs exist so the exporter has files to tail
+  copy:
+    dest: "{{ nginx_log_dir }}/{{ item.name }}.access.log"
+    content: ""
+    owner: www-data
+    group: adm
+    mode: "0640"
+    force: false        # create only if missing; never truncate real logs
+  loop: "{{ nginx_sites }}"
+  loop_control:
+    label: "{{ item.name }}.access.log"
+
 - name: Install nginxlog exporter systemd unit
   template:
     src: nginx_exporter.service.j2
