@@ -34,6 +34,14 @@
     loop_var: exp_item
     label: "{{ exp_item.key }}"
 
+- name: Deploy summary
+  debug:
+    msg: >-
+      {% if (deploy_failed_projects | default([]) | length) > 0 %}⚠ Failed
+      project(s): {{ deploy_failed_projects | join(', ') }} — those apps will be DOWN
+      until fixed; the rest deployed and PM2 will start them.
+      {% else %}✓ All projects deployed successfully.{% endif %}
+
 # ---------------------------------------------------------------------------
 # Point each app's uploads dir at the central shared folder. Handles the case
 # where the app already has a real (non-empty) uploads directory: migrate the

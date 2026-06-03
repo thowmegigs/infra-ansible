@@ -1,5 +1,8 @@
 ---
 # Deploy a single production project (project_item = {key, value}).
+# Clone + build run inside a block/rescue so a failure in ONE project (e.g. a
+# broken npm dependency) records the failure and continues — the rest still
+# deploy and PM2 can still start the working apps.
 - name: "[{{ project_item.key }}] >>> Starting deploy"
   debug:
     msg: >-
@@ -16,136 +19,142 @@
     group: "{{ web_group }}"
     mode: "{{ web_dir_mode }}"
 
-- name: "[{{ project_item.key }}] Clone or update repository"
-  git:
-    repo: "{{ project_item.value.repo }}"
-    dest: "{{ project_item.value.path }}"
-    version: "{{ project_item.value.branch | default('main') }}"
-    accept_hostkey: yes
-    force: yes
-  register: git_result
+- name: "[{{ project_item.key }}] Clone + build"
+  block:
+    - name: "[{{ project_item.key }}] Clone or update repository"
+      git:
+        repo: "{{ project_item.value.repo }}"
+        dest: "{{ project_item.value.path }}"
+        version: "{{ project_item.value.branch | default('main') }}"
+        accept_hostkey: yes
+        force: yes
+      register: git_result
 
-- name: "[{{ project_item.key }}] Git status"
-  debug:
-    msg: "Repo {{ 'UPDATED (new code pulled)' if git_result.changed else 'already up to date' }} at {{ project_item.value.path }}"
+    - name: "[{{ project_item.key }}] Git status"
+      debug:
+        msg: "Repo {{ 'UPDATED (new code pulled)' if git_result.changed else 'already up to date' }} at {{ project_item.value.path }}"
 
-- name: "[{{ project_item.key }}] Build plan"
-  debug:
-    msg: >-
-      {% if project_item.value.type == 'nextjs' %}Next.js: npm install + npm run build
-      {% elif project_item.value.type == 'express' %}Express: npm install
-      {% elif project_item.value.type == 'laravel' %}Laravel: composer install + artisan optimize + migrate
-      {% elif project_item.value.type == 'python' %}Python: create venv + pip install
-      {% else %}No build step for type '{{ project_item.value.type }}'{% endif %}
+    # --- Next.js -----------------------------------------------------------
+    - name: "[{{ project_item.key }}] Next.js — install dependencies & build"
+      shell: |
+        set -e
+        npm install
+        npm run build
+      args:
+        chdir: "{{ project_item.value.path }}"
+      when: project_item.value.type == 'nextjs'
+      changed_when: true
 
-# --- Next.js ---------------------------------------------------------------
-- name: "[{{ project_item.key }}] Next.js — install dependencies & build"
-  shell: |
-    set -e
-    npm install
-    npm run build
-  args:
-    chdir: "{{ project_item.value.path }}"
-  when: project_item.value.type == 'nextjs'
-  changed_when: true
+    # --- Express -----------------------------------------------------------
+    - name: "[{{ project_item.key }}] Express — install dependencies & build (if present)"
+      shell: |
+        set -e
+        npm install
+        npm run build --if-present
+      args:
+        chdir: "{{ project_item.value.path }}"
+      when: project_item.value.type == 'express'
+      changed_when: true
 
-# --- Express ---------------------------------------------------------------
-- name: "[{{ project_item.key }}] Express — install dependencies"
-  command: npm install
-  args:
-    chdir: "{{ project_item.value.path }}"
-  when: project_item.value.type == 'express'
-  changed_when: true
+    # --- Laravel -----------------------------------------------------------
+    - name: "[{{ project_item.key }}] Laravel — link .env to {{ secrets_dir }}/{{ project_item.key }}.env"
+      file:
+        src: "{{ secrets_dir }}/{{ project_item.key }}.env"
+        dest: "{{ project_item.value.path }}/.env"
+        state: link
+        force: yes
+        follow: false
+      when: project_item.value.type == 'laravel'
 
-# --- Laravel ---------------------------------------------------------------
-- name: "[{{ project_item.key }}] Laravel — link .env to {{ secrets_dir }}/{{ project_item.key }}.env"
-  file:
-    src: "{{ secrets_dir }}/{{ project_item.key }}.env"
-    dest: "{{ project_item.value.path }}/.env"
-    state: link
-    force: yes
-    follow: false
-  when: project_item.value.type == 'laravel'
+    - name: "[{{ project_item.key }}] Laravel — composer install"
+      command: composer install --no-dev --optimize-autoloader --no-interaction
+      args:
+        chdir: "{{ project_item.value.path }}"
+      environment:
+        COMPOSER_ALLOW_SUPERUSER: "1"
+      when: project_item.value.type == 'laravel'
+      changed_when: true
 
-- name: "[{{ project_item.key }}] Laravel — composer install"
-  command: composer install --no-dev --optimize-autoloader --no-interaction
-  args:
-    chdir: "{{ project_item.value.path }}"
-  environment:
-    COMPOSER_ALLOW_SUPERUSER: "1"
-  when: project_item.value.type == 'laravel'
-  changed_when: true
+    # Clear any stale/committed cached config so artisan reads the real .env
+    # (otherwise Laravel 11 falls back to its sqlite default).
+    - name: "[{{ project_item.key }}] Laravel — clear cached config/routes/views"
+      command: php artisan optimize:clear
+      args:
+        chdir: "{{ project_item.value.path }}"
+      environment:
+        COMPOSER_ALLOW_SUPERUSER: "1"
+      when: project_item.value.type == 'laravel'
+      changed_when: true
 
-# Clear any stale/committed cached config (bootstrap/cache/*.php) so artisan
-# reads the real .env (otherwise Laravel 11 falls back to its sqlite default).
-- name: "[{{ project_item.key }}] Laravel — clear cached config/routes/views"
-  command: php artisan optimize:clear
-  args:
-    chdir: "{{ project_item.value.path }}"
-  environment:
-    COMPOSER_ALLOW_SUPERUSER: "1"
-  when: project_item.value.type == 'laravel'
-  changed_when: true
+    - name: "[{{ project_item.key }}] Laravel — run migrations"
+      command: php artisan migrate --force
+      args:
+        chdir: "{{ project_item.value.path }}"
+      environment:
+        COMPOSER_ALLOW_SUPERUSER: "1"
+      when: project_item.value.type == 'laravel'
+      changed_when: true
 
-- name: "[{{ project_item.key }}] Laravel — run migrations"
-  command: php artisan migrate --force
-  args:
-    chdir: "{{ project_item.value.path }}"
-  environment:
-    COMPOSER_ALLOW_SUPERUSER: "1"
-  when: project_item.value.type == 'laravel'
-  changed_when: true
+    - name: "[{{ project_item.key }}] Laravel — optimize (cache config/routes/views)"
+      command: php artisan optimize
+      args:
+        chdir: "{{ project_item.value.path }}"
+      environment:
+        COMPOSER_ALLOW_SUPERUSER: "1"
+      when: project_item.value.type == 'laravel'
+      changed_when: true
 
-# Cache config/routes/views for production AFTER a successful migrate.
-- name: "[{{ project_item.key }}] Laravel — optimize (cache config/routes/views)"
-  command: php artisan optimize
-  args:
-    chdir: "{{ project_item.value.path }}"
-  environment:
-    COMPOSER_ALLOW_SUPERUSER: "1"
-  when: project_item.value.type == 'laravel'
-  changed_when: true
+    # --- Standalone python project -----------------------------------------
+    - name: "[{{ project_item.key }}] Python — create virtualenv"
+      command: "python3 -m venv {{ project_item.value.path }}/venv"
+      args:
+        creates: "{{ project_item.value.path }}/venv/bin/python"
+      when: project_item.value.type == 'python'
 
-# --- Standalone python project (e.g. python_service) -----------------------
-- name: "[{{ project_item.key }}] Python — create virtualenv"
-  command: "python3 -m venv {{ project_item.value.path }}/venv"
-  args:
-    creates: "{{ project_item.value.path }}/venv/bin/python"
-  when: project_item.value.type == 'python'
+    - name: "[{{ project_item.key }}] Python — check for requirements.txt"
+      stat:
+        path: "{{ project_item.value.path }}/requirements.txt"
+      register: py_reqs
+      when: project_item.value.type == 'python'
 
-- name: "[{{ project_item.key }}] Python — check for requirements.txt"
-  stat:
-    path: "{{ project_item.value.path }}/requirements.txt"
-  register: py_reqs
-  when: project_item.value.type == 'python'
+    - name: "[{{ project_item.key }}] Python — install requirements"
+      pip:
+        requirements: "{{ project_item.value.path }}/requirements.txt"
+        virtualenv: "{{ project_item.value.path }}/venv"
+      when:
+        - project_item.value.type == 'python'
+        - py_reqs.stat is defined
+        - py_reqs.stat.exists
 
-- name: "[{{ project_item.key }}] Python — install requirements"
-  pip:
-    requirements: "{{ project_item.value.path }}/requirements.txt"
-    virtualenv: "{{ project_item.value.path }}/venv"
-  when:
-    - project_item.value.type == 'python'
-    - py_reqs.stat is defined
-    - py_reqs.stat.exists
+    # --- Final permissions (after build so generated files are covered) -----
+    - name: "[{{ project_item.key }}] Set ownership to {{ web_owner }}:{{ web_group }}"
+      file:
+        path: "{{ project_item.value.path }}"
+        state: directory
+        owner: "{{ web_owner }}"
+        group: "{{ web_group }}"
+        recurse: yes
 
-# --- Final permissions (run after build so generated files are covered too) -
-- name: "[{{ project_item.key }}] Set ownership to {{ web_owner }}:{{ web_group }}"
-  file:
-    path: "{{ project_item.value.path }}"
-    state: directory
-    owner: "{{ web_owner }}"
-    group: "{{ web_group }}"
-    recurse: yes
+    - name: "[{{ project_item.key }}] Laravel — make storage & cache writable by www-data"
+      file:
+        path: "{{ project_item.value.path }}/{{ item }}"
+        state: directory
+        owner: "{{ web_owner }}"
+        group: "{{ web_group }}"
+        mode: "02775"
+        recurse: yes
+      loop: "{{ laravel_writable_paths }}"
+      loop_control:
+        label: "{{ item }}"
+      when: project_item.value.type == 'laravel'
 
-- name: "[{{ project_item.key }}] Laravel — make storage & cache writable by www-data"
-  file:
-    path: "{{ project_item.value.path }}/{{ item }}"
-    state: directory
-    owner: "{{ web_owner }}"
-    group: "{{ web_group }}"
-    mode: "02775"
-    recurse: yes
-  loop: "{{ laravel_writable_paths }}"
-  loop_control:
-    label: "{{ item }}"
-  when: project_item.value.type == 'laravel'
+  rescue:
+    - name: "[{{ project_item.key }}] Record deploy failure and CONTINUE"
+      set_fact:
+        deploy_failed_projects: "{{ (deploy_failed_projects | default([])) + [project_item.key] }}"
+
+    - name: "[{{ project_item.key }}] WARNING — deploy failed, app will be down until fixed"
+      debug:
+        msg: >-
+          WARNING: deploy FAILED for '{{ project_item.key }}'. Continuing with the
+          other projects. Reason: {{ ansible_failed_result.msg | default('see the error above') }}
