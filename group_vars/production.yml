@@ -20,13 +20,13 @@ projects:
     port: 5000
 
   seller_front:
-    repo: git@github.com:thowmegigs/seller-frontend.git
+    repo: git@github.com:thowmegigs/colorindigo-seller-frontend.git
     path: /var/www/seller/frontend
     type: nextjs
     port: 3001
 
   seller_backend:
-    repo: git@github.com:thowmegigs/seller-backend.git
+    repo: git@github.com:thowmegigs/colorindigo-seller-backend.git
     path: /var/www/seller/backend
     type: express
     port: 4001
