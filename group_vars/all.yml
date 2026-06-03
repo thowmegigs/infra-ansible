@@ -41,22 +41,11 @@ backup_dir: /var/backups/infra
 
 # --- Secrets -----------------------------------------------------------------
 # Centralized env files live in /opt/secrets (root:root, dir 0700, files 0600).
-# The real .env files are kept in this repo under env/<project>/.env (git-ignored)
-# and copied to /opt/secrets by the `secrets` role. Apps never keep a .env in
-# their own repo; PM2/Laravel/Express/Python all consume /opt/secrets/*.env.
+# They are RENDERED by the `secrets` role from vars/env.yml (non-secret, committed)
+# + group_vars/secrets.yml (vault). Apps never keep a .env in their own repo;
+# PM2/Laravel/Express all consume /opt/secrets/*.env (Laravel via a symlink).
 secrets_dir: /opt/secrets
 python_env_file: "{{ secrets_dir }}/image-to-product-python.env"
-
-# Map each source .env (relative to this repo root) to its /opt/secrets target.
-# A missing source is skipped with a warning (not fatal).
-secret_env_files:
-  - { src: "env/frontend/.env",                 dest: "{{ secrets_dir }}/front.env" }
-  - { src: "env/api/.env",                      dest: "{{ secrets_dir }}/api.env" }
-  - { src: "env/admin/.env",                    dest: "{{ secrets_dir }}/admin.env" }
-  - { src: "env/seller_frontend/.env",          dest: "{{ secrets_dir }}/seller-front.env" }
-  - { src: "env/seller-backend/.env",           dest: "{{ secrets_dir }}/seller-backend.env" }
-  - { src: "env/image-to-product-backend/.env", dest: "{{ secrets_dir }}/image-to-product-backend.env" }
-  - { src: "env/image-to-product-python/.env",  dest: "{{ secrets_dir }}/image-to-product-python.env" }
 
 # ===========================================================================
 # Observability — Grafana + Loki + Promtail + Node Exporter + Prometheus

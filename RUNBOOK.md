@@ -52,35 +52,43 @@ ssh -T git@github.com                      # accept the host key once
 
 ## 4. Secrets & values
 
-### 4a. App env files (`env/<project>/.env`)
+### 4a. How env files work (no plaintext `env/` folder)
 
-Real `.env` files live in `env/` **in this repo** (git-ignored) and are copied to
-`/opt/secrets/*.env` by the `secrets` play. Files: `frontend, api, admin,
-seller_frontend, seller-backend, image-to-product-backend, image-to-product-python`.
+Each project's `.env` is **rendered** during the `secrets` stage into
+`/opt/secrets/<project>.env` (root-only `0600`, outside the project folder) from:
 
-> ⚠️ **`env/` is git-ignored, so `git clone` on the VPS does NOT include it.**
-> You MUST copy it onto the VPS once (and after any change):
+- **`vars/env.yml`** — non-secret values (ports, hosts, URLs, public keys).
+  Committed to git.
+- **`group_vars/secrets.yml`** — the secret values (vault). **Not committed**
+  unless encrypted.
+
+Node apps source their file via PM2; Laravel gets a symlink
+`/var/www/admin/.env → /opt/secrets/admin.env`.
+
+> ⚠️ `group_vars/secrets.yml` is git-ignored (it holds real credentials). Get it
+> onto the VPS one of two ways:
 >
+> **Option A — scp it (simplest):**
 > ```bash
-> scp -r ./env  root@SERVER_IP:/root/infra-ansible/env
+> scp group_vars/secrets.yml root@SERVER_IP:/root/infra-ansible/group_vars/
 > ```
->
-> If it's missing, the `secrets` play now fails fast with this instruction
-> (instead of letting Laravel/Node break later with a dangling `.env`).
+> **Option B — encrypt and commit it (travels with git):**
+> ```bash
+> ansible-vault encrypt group_vars/secrets.yml
+> git add -f group_vars/secrets.yml && git commit -m "vault secrets" && git push
+> ```
+> Either way, run with `--ask-vault-pass` once it's encrypted.
 
-Make sure ports/URLs match the deployment (README → *Secrets management*), and that
-the DB user/password in each `.env` matches what MySQL creates:
-`appuser`/`vault_app_db_password` (or, if an app's `.env` uses `admin`, set
-`vault_phpmyadmin_password` to that same password).
+To change a value: edit `vars/env.yml` (non-secret) or `secrets.yml` (secret), then
+re-run `playbooks/secrets.yml` (+ `pm2.yml` for Node apps to pick it up).
 
-### 4b. Vault (passwords Ansible needs)
+### 4b. Make DB credentials line up
 
-`group_vars/secrets.yml` holds the MySQL `appuser` + phpMyAdmin `admin` passwords.
-They **must match** `DB_PASSWORD` in your env files. Encrypt it:
-
-```bash
-ansible-vault encrypt group_vars/secrets.yml
-# then run with --ask-vault-pass  (or set vault_password_file in ansible.cfg)
+All apps connect to MySQL as user **`admin`** with `vault_db_password`. Ansible
+creates that account from `vault_phpmyadmin_password`, so keep both equal:
+```yaml
+vault_db_password:         "MangoTree@20252024"
+vault_phpmyadmin_password: "MangoTree@20252024"
 ```
 
 ### 4c. Other values in `group_vars/all.yml`
