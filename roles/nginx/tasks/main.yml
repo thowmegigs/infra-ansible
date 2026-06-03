@@ -14,7 +14,7 @@
   copy:
     dest: /etc/nginx/conf.d/log_format.conf
     content: |
-      # {{ ansible_managed }}
+      # Managed by Ansible — do not edit.
       log_format monitoring '{{ nginx_monitoring_log_format }}';
     mode: "0644"
   notify: reload nginx
