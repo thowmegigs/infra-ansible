@@ -31,11 +31,6 @@ projects:
     type: express
     port: 4001
 
-  python_service:
-    repo: git@github.com:thowmegigs/python-image-service.git
-    path: /var/www/scripts
-    type: python
-    port: 5001
 experimental_projects:
 
   image_to_product:
