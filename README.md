@@ -269,22 +269,36 @@ every env file from `env/` + the vault on a fresh VPS.
 
 ### Shared uploads folder & permissions
 
-A product-image uploads folder is created at `/var/www/uploads` (not part of any
-repo). It is owned `www-data:www-data`, mode `2775` (setgid), and the deploy user
-is added to the `www-data` group — so both the Laravel admin (PHP-FPM) and the
-Node apps can write to it. It is symlinked into each app:
+A central product-image uploads folder is created at `/var/www/shared/uploads`
+(outside every app deployment). It is owned `www-data:www-data`, mode `2775`
+(setgid), and the deploy user is in the `www-data` group — so the Laravel admin
+(PHP-FPM) and the Node apps can all write to it. Each app's uploads path is a
+**symlink** into it:
 
 ```yaml
-shared_uploads_dir: /var/www/uploads
+shared_uploads_dir: /var/www/shared/uploads
 shared_uploads_links:
   - "{{ projects.admin.path }}/public/uploads"     # Laravel admin (nginx serves public/)
   - "{{ projects.api.path }}/uploads"              # Express API
   - "{{ projects.seller_backend.path }}/uploads"   # seller Express backend
 ```
 
-Every linked app reaches the **same** files under `/var/www/uploads`, so an
+Every linked app reaches the **same** files under `/var/www/shared/uploads`, so an
 image uploaded by the Laravel admin is immediately visible to the Express apps
 and vice-versa.
+
+**Safe migration (deploy/tasks/uploads.yml).** If an app already has a *real*
+(non-empty) `uploads/` directory — e.g. shipped by the repo or created by a
+previous deploy — the deploy does NOT blow it away. For each target it:
+1. verifies `/var/www/shared/uploads` exists;
+2. `rsync -a --update` the existing files into the shared folder (no deletes,
+   never overwrites newer files), and **fails clearly** if the sync errors;
+3. renames the original to `…/uploads.bak-<timestamp>` (or just removes it if it
+   was empty);
+4. creates the symlink.
+
+It is fully idempotent: an already-correct symlink is left untouched, files are
+never duplicated, and **no user-uploaded file is ever deleted**.
 
 Permissions are applied automatically from `group_vars/all.yml`:
 

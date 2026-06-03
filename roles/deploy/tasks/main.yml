@@ -35,21 +35,14 @@
     label: "{{ exp_item.key }}"
 
 # ---------------------------------------------------------------------------
-# Link the shared uploads folder into each app (runs after repos are cloned,
-# so the parent directories exist). force replaces a stale file/symlink.
+# Point each app's uploads dir at the central shared folder. Handles the case
+# where the app already has a real (non-empty) uploads directory: migrate the
+# files into the shared folder first, back up the original, then symlink.
+# Idempotent + never deletes user-uploaded files.  (See uploads.yml.)
 # ---------------------------------------------------------------------------
-- name: Link shared uploads folder into apps
-  debug:
-    msg: "Linking {{ shared_uploads_dir }} -> {{ shared_uploads_links | join(', ') }}"
-  when: shared_uploads_links | default([]) | length > 0
-
-- name: Create shared uploads symlinks
-  file:
-    src: "{{ shared_uploads_dir }}"
-    dest: "{{ item }}"
-    state: link
-    force: yes
-    follow: no
+- name: Migrate & link shared uploads for each app
+  include_tasks: uploads.yml
   loop: "{{ shared_uploads_links | default([]) }}"
   loop_control:
-    label: "{{ item }}"
+    loop_var: uploads_dest
+    label: "{{ uploads_dest }}"

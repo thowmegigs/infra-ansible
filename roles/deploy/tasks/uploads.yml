@@ -1,0 +1,101 @@
+---
+# Migrate one app uploads dir into the shared folder, then symlink it.
+# uploads_dest = e.g. /var/www/admin/public/uploads
+#
+# Idempotent:
+#   - already the correct symlink         -> no change
+#   - real non-empty directory            -> rsync into shared, back up, then link
+#   - stale symlink / regular file        -> replaced by the symlink (force)
+# Never deletes user-uploaded files (rsync without --delete; original is backed up).
+
+- name: "[uploads] Safety: shared uploads dir exists ({{ shared_uploads_dir }})"
+  stat:
+    path: "{{ shared_uploads_dir }}"
+  register: up_shared
+
+- name: "[uploads] Fail if shared uploads dir is missing"
+  fail:
+    msg: "Shared uploads dir {{ shared_uploads_dir }} does not exist — cannot link {{ uploads_dest }}."
+  when: not (up_shared.stat.exists and up_shared.stat.isdir)
+
+- name: "[uploads] Inspect destination {{ uploads_dest }}"
+  stat:
+    path: "{{ uploads_dest }}"
+    follow: false
+  register: up_dest
+
+- name: "[uploads] Already linked to shared — nothing to do"
+  debug:
+    msg: "{{ uploads_dest }} already -> {{ shared_uploads_dir }} (skipping)"
+  when:
+    - up_dest.stat.exists
+    - up_dest.stat.islnk | default(false)
+    - (up_dest.stat.lnk_target | default('') | regex_replace('/$', '')) == shared_uploads_dir
+
+- name: "[uploads] Ensure parent directory of {{ uploads_dest }} exists"
+  file:
+    path: "{{ uploads_dest | dirname }}"
+    state: directory
+    owner: "{{ web_owner }}"
+    group: "{{ web_group }}"
+    mode: "{{ web_dir_mode }}"
+
+# --- Migrate a REAL directory (not a symlink) -------------------------------
+- name: "[uploads] Migrate existing real directory {{ uploads_dest }}"
+  when:
+    - up_dest.stat.exists
+    - up_dest.stat.isdir | default(false)
+    - not (up_dest.stat.islnk | default(false))
+  block:
+    - name: "[uploads] Check whether {{ uploads_dest }} has any contents"
+      find:
+        paths: "{{ uploads_dest }}"
+        file_type: any
+        hidden: true
+        recurse: false
+      register: up_contents
+
+    # ---- non-empty: sync into shared, then back up the original ----
+    - name: "[uploads] Sync {{ uploads_dest }} -> {{ shared_uploads_dir }} (keep newer, no deletes)"
+      command: "rsync -a --update {{ uploads_dest }}/ {{ shared_uploads_dir }}/"
+      register: up_rsync
+      changed_when: (up_rsync.stdout | default('') | length) > 0
+      when: up_contents.matched | int > 0
+
+    - name: "[uploads] Verify sync succeeded"
+      fail:
+        msg: "rsync of {{ uploads_dest }} into {{ shared_uploads_dir }} FAILED (rc={{ up_rsync.rc }}) — not converting the directory; no files touched."
+      when:
+        - up_contents.matched | int > 0
+        - up_rsync.rc != 0
+
+    - name: "[uploads] Fix ownership of synced files in shared dir"
+      file:
+        path: "{{ shared_uploads_dir }}"
+        state: directory
+        owner: "{{ shared_uploads_owner }}"
+        group: "{{ shared_uploads_group }}"
+        recurse: yes
+      when: up_contents.matched | int > 0
+
+    - name: "[uploads] Back up original directory -> {{ uploads_dest }}.bak-<timestamp>"
+      command: "mv {{ uploads_dest }} {{ uploads_dest }}.bak-{{ ansible_date_time.iso8601_basic_short }}"
+      register: up_backup
+      failed_when: up_backup.rc != 0
+      when: up_contents.matched | int > 0
+
+    # ---- empty: just remove it (nothing to preserve) ----
+    - name: "[uploads] Remove empty directory {{ uploads_dest }}"
+      file:
+        path: "{{ uploads_dest }}"
+        state: absent
+      when: up_contents.matched | int == 0
+
+# --- Create the symlink (force replaces a stale symlink/file; dir is gone) ---
+- name: "[uploads] Link {{ uploads_dest }} -> {{ shared_uploads_dir }}"
+  file:
+    src: "{{ shared_uploads_dir }}"
+    dest: "{{ uploads_dest }}"
+    state: link
+    force: true
+    follow: false

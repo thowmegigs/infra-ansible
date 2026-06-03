@@ -15,6 +15,7 @@
       - git
       - curl
       - unzip
+      - rsync
       - ca-certificates
       - gnupg
       - lsb-release

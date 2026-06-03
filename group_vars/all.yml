@@ -221,7 +221,7 @@ phpmyadmin_admin_user: admin
 # Product-image uploads folder shared by the Laravel admin and the seller admin.
 # Not part of any git repo, so Ansible creates it (owned by www-data, group
 # writable + setgid so PHP-FPM and the Node apps can both write to it).
-shared_uploads_dir: /var/www/uploads
+shared_uploads_dir: /var/www/shared/uploads
 shared_uploads_owner: www-data
 shared_uploads_group: www-data
 shared_uploads_mode: "02775"
