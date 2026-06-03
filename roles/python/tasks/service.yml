@@ -37,6 +37,7 @@
     daemon_reload: yes
   when: unit_files is changed
 
+# --- When ENABLED: keep the Qwen services running ---------------------------
 - name: "[{{ exp_item.key }}] Enable and restart changed services"
   systemd:
     name: "{{ item.value.service_name }}"
@@ -45,7 +46,9 @@
   loop: "{{ exp_item.value.python.services | dict2items }}"
   loop_control:
     label: "{{ item.value.service_name }}"
-  when: unit_files is changed or (secrets_changed | default(false))
+  when:
+    - python_ai_services_enabled | default(true)
+    - unit_files is changed or (secrets_changed | default(false))
 
 - name: "[{{ exp_item.key }}] Ensure services are enabled and running"
   systemd:
@@ -55,3 +58,15 @@
   loop: "{{ exp_item.value.python.services | dict2items }}"
   loop_control:
     label: "{{ item.value.service_name }}"
+  when: python_ai_services_enabled | default(true)
+
+# --- When DISABLED: stop + disable them (saves CPU/RAM) ----------------------
+- name: "[{{ exp_item.key }}] Stop and disable python AI services (python_ai_services_enabled=false)"
+  systemd:
+    name: "{{ item.value.service_name }}"
+    enabled: no
+    state: stopped
+  loop: "{{ exp_item.value.python.services | dict2items }}"
+  loop_control:
+    label: "{{ item.value.service_name }}"
+  when: not (python_ai_services_enabled | default(true))

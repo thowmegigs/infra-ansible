@@ -394,3 +394,8 @@ ai_python:
   # user's ~/.cache/huggingface). Off by default — turn on for a first provision.
   warmup: false
   warmup_script: load_qwen.py   # relative to the python scripts dir
+
+# Run the Qwen AI systemd services? These load multi-GB PyTorch models on CPU and
+# are very heavy. Set false to STOP + DISABLE them (the python role will stop them
+# on the next run) — recommended on a small VPS / when not actively using them.
+python_ai_services_enabled: false
